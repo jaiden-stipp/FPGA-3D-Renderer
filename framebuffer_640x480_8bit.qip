@@ -1,0 +1,17 @@
+# Add this QIP to a Quartus project to include the reusable graphics pipeline.
+
+set_global_assignment -name SEARCH_PATH [file join $::quartus(qip_path) rtl common]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl memory framebuffer_ip.v]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl memory zbuffer_ip.v]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl memory palette_ip.v]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl memory framebuffer.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_clock_div2.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_timing.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_controller.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline renderer.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl memory zbuffer.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline triangle_fifo.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl common iterative_signed_divider.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline transform_3d_pipeline.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline graphics_pipeline.sv]
+set_global_assignment -name MIF_FILE [file join $::quartus(qip_path) rtl memory palette_default.mif]

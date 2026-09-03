@@ -1,0 +1,24 @@
+# Quartus generated files
+db/
+incremental_db/
+output_files/
+*.qws
+*.qmsg
+*.rpt
+*.summary
+*.smsg
+*.pin
+*.jdi
+*.sof
+*.sld
+*.cdf
+*.done
+
+# ModelSim generated files
+work/
+transcript
+vsim.wlf
+
+# Editor and backup files
+*.bak
+*~

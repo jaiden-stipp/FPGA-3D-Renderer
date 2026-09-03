@@ -1,0 +1,125 @@
+# Quartus project settings.
+
+set_global_assignment -name FAMILY "Cyclone IV E"
+set_global_assignment -name DEVICE EP4CE115F29C7
+set_global_assignment -name TOP_LEVEL_ENTITY de2_115_top
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.0
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "12:47:05  SEPTEMBER 02, 2026"
+set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
+set_global_assignment -name SEARCH_PATH rtl/common
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_timing.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_controller.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_clock_div2.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/common/iterative_signed_divider.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/triangle_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/transform_3d_pipeline.sv
+set_global_assignment -name VERILOG_FILE rtl/memory/palette_ip.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/graphics_pipeline.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/cube_demo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/de2_115_top.sv
+set_global_assignment -name VERILOG_FILE rtl/memory/framebuffer_ip.v
+set_global_assignment -name VERILOG_FILE rtl/memory/zbuffer_ip.v
+set_global_assignment -name QIP_FILE framebuffer_640x480_8bit.qip
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/memory/framebuffer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/memory/zbuffer.sv
+set_global_assignment -name SDC_FILE Graphics.sdc
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
+set_global_assignment -name NOMINAL_CORE_SUPPLY_VOLTAGE 1.2V
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+
+# DE2-115 pin assignments.
+
+# 50 MHz oscillator and active-low push buttons.
+set_location_assignment PIN_Y2 -to CLOCK_50
+set_location_assignment PIN_M23 -to KEY[0]
+set_location_assignment PIN_M21 -to KEY[1]
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CLOCK_50
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[1]
+
+# ADV7123 VGA DAC: eight bits per color channel.
+set_location_assignment PIN_E12 -to VGA_R[0]
+set_location_assignment PIN_E11 -to VGA_R[1]
+set_location_assignment PIN_D10 -to VGA_R[2]
+set_location_assignment PIN_F12 -to VGA_R[3]
+set_location_assignment PIN_G10 -to VGA_R[4]
+set_location_assignment PIN_J12 -to VGA_R[5]
+set_location_assignment PIN_H8 -to VGA_R[6]
+set_location_assignment PIN_H10 -to VGA_R[7]
+
+set_location_assignment PIN_G8 -to VGA_G[0]
+set_location_assignment PIN_G11 -to VGA_G[1]
+set_location_assignment PIN_F8 -to VGA_G[2]
+set_location_assignment PIN_H12 -to VGA_G[3]
+set_location_assignment PIN_C8 -to VGA_G[4]
+set_location_assignment PIN_B8 -to VGA_G[5]
+set_location_assignment PIN_F10 -to VGA_G[6]
+set_location_assignment PIN_C9 -to VGA_G[7]
+
+set_location_assignment PIN_B10 -to VGA_B[0]
+set_location_assignment PIN_A10 -to VGA_B[1]
+set_location_assignment PIN_C11 -to VGA_B[2]
+set_location_assignment PIN_B11 -to VGA_B[3]
+set_location_assignment PIN_A11 -to VGA_B[4]
+set_location_assignment PIN_C12 -to VGA_B[5]
+set_location_assignment PIN_D11 -to VGA_B[6]
+set_location_assignment PIN_D12 -to VGA_B[7]
+
+# ADV7123 clock, blanking, sync-on-green, and horizontal/vertical sync.
+set_location_assignment PIN_A12 -to VGA_CLK
+set_location_assignment PIN_F11 -to VGA_BLANK_N
+set_location_assignment PIN_C10 -to VGA_SYNC_N
+set_location_assignment PIN_G13 -to VGA_HS
+set_location_assignment PIN_C13 -to VGA_VS
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_R[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_G[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_B[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_CLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_BLANK_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_SYNC_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_HS
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_VS
+
+# The VGA DAC interface is driven at 8 mA, as used by the DE2-115 examples.
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_R[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_G[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_B[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_CLK
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_BLANK_N
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_SYNC_N
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_HS
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_VS
+
+
+
+
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
