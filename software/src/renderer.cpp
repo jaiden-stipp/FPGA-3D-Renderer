@@ -1,0 +1,222 @@
+#include "fpga_renderer/renderer.hpp"
+
+#include <cmath>
+#include <fstream>
+#include <limits>
+#include <stdexcept>
+
+namespace fpga_renderer {
+
+namespace {
+
+void appendFixed(std::vector<std::uint8_t>& output, float value) {
+    const auto fixed = static_cast<std::uint16_t>(toQ8_8(value));
+    output.push_back(static_cast<std::uint8_t>(fixed >> 8));
+    output.push_back(static_cast<std::uint8_t>(fixed));
+}
+
+}
+
+Mat4 Mat4::identity() {
+    Mat4 result;
+    result.values[0] = 1.0F;
+    result.values[5] = 1.0F;
+    result.values[10] = 1.0F;
+    result.values[15] = 1.0F;
+    return result;
+}
+
+Mat4 Mat4::translation(float x, float y, float z) {
+    Mat4 result = identity();
+    result.values[3] = x;
+    result.values[7] = y;
+    result.values[11] = z;
+    return result;
+}
+
+Mat4 Mat4::scale(float x, float y, float z) {
+    Mat4 result = identity();
+    result.values[0] = x;
+    result.values[5] = y;
+    result.values[10] = z;
+    return result;
+}
+
+Mat4 Mat4::rotationX(float radians) {
+    Mat4 result = identity();
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    result.values[5] = cosine;
+    result.values[6] = -sine;
+    result.values[9] = sine;
+    result.values[10] = cosine;
+    return result;
+}
+
+Mat4 Mat4::rotationY(float radians) {
+    Mat4 result = identity();
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    result.values[0] = cosine;
+    result.values[2] = sine;
+    result.values[8] = -sine;
+    result.values[10] = cosine;
+    return result;
+}
+
+Mat4 Mat4::rotationZ(float radians) {
+    Mat4 result = identity();
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    result.values[0] = cosine;
+    result.values[1] = -sine;
+    result.values[4] = sine;
+    result.values[5] = cosine;
+    return result;
+}
+
+Vec3 Mat4::transformPoint(const Vec3& point) const {
+    const float x = values[0] * point.x + values[1] * point.y +
+                    values[2] * point.z + values[3];
+    const float y = values[4] * point.x + values[5] * point.y +
+                    values[6] * point.z + values[7];
+    const float z = values[8] * point.x + values[9] * point.y +
+                    values[10] * point.z + values[11];
+    const float w = values[12] * point.x + values[13] * point.y +
+                    values[14] * point.z + values[15];
+    if (std::abs(w) < std::numeric_limits<float>::epsilon())
+        throw std::runtime_error("transform produced a zero w coordinate");
+    return {x / w, y / w, z / w};
+}
+
+Mat4 operator*(const Mat4& left, const Mat4& right) {
+    Mat4 result;
+    for (std::size_t row = 0; row < 4; ++row) {
+        for (std::size_t column = 0; column < 4; ++column) {
+            float value = 0.0F;
+            for (std::size_t index = 0; index < 4; ++index)
+                value += left.values[row * 4 + index] * right.values[index * 4 + column];
+            result.values[row * 4 + column] = value;
+        }
+    }
+    return result;
+}
+
+void Mesh::addTriangle(const Triangle& triangle) {
+    triangles_.push_back(triangle);
+}
+
+const std::vector<Triangle>& Mesh::triangles() const {
+    return triangles_;
+}
+
+void CommandStream::clear() {
+    bytes_.clear();
+    frame_open_ = false;
+}
+
+void CommandStream::setRotation(std::uint8_t angle) {
+    if (frame_open_)
+        throw std::logic_error("rotation can only change between frames");
+    append(Opcode::SetRotation, {angle});
+}
+
+void CommandStream::setPalette(std::uint8_t index, Rgb color) {
+    if (frame_open_)
+        throw std::logic_error("palette entries can only change between frames");
+    append(Opcode::SetPalette, {index, color.red, color.green, color.blue});
+}
+
+void CommandStream::beginFrame() {
+    if (frame_open_)
+        throw std::logic_error("a frame is already open");
+    append(Opcode::BeginFrame, {});
+    frame_open_ = true;
+}
+
+void CommandStream::drawTriangle(const Triangle& triangle) {
+    if (!frame_open_)
+        throw std::logic_error("draw commands require an open frame");
+    std::vector<std::uint8_t> payload;
+    payload.reserve(19);
+    appendFixed(payload, triangle.v0.x);
+    appendFixed(payload, triangle.v0.y);
+    appendFixed(payload, triangle.v0.z);
+    appendFixed(payload, triangle.v1.x);
+    appendFixed(payload, triangle.v1.y);
+    appendFixed(payload, triangle.v1.z);
+    appendFixed(payload, triangle.v2.x);
+    appendFixed(payload, triangle.v2.y);
+    appendFixed(payload, triangle.v2.z);
+    payload.push_back(triangle.color);
+    append(Opcode::DrawTriangle, payload);
+}
+
+void CommandStream::drawMesh(const Mesh& mesh, const Mat4& transform) {
+    for (const auto& triangle : mesh.triangles()) {
+        drawTriangle({
+            transform.transformPoint(triangle.v0),
+            transform.transformPoint(triangle.v1),
+            transform.transformPoint(triangle.v2),
+            triangle.color
+        });
+    }
+}
+
+void CommandStream::endFrame() {
+    if (!frame_open_)
+        throw std::logic_error("there is no open frame to end");
+    append(Opcode::EndFrame, {});
+    frame_open_ = false;
+}
+
+const std::vector<std::uint8_t>& CommandStream::bytes() const {
+    return bytes_;
+}
+
+void CommandStream::save(const std::filesystem::path& path) const {
+    std::ofstream output(path, std::ios::binary);
+    if (!output)
+        throw std::runtime_error("could not open command stream output file");
+    output.write(reinterpret_cast<const char*>(bytes_.data()),
+                 static_cast<std::streamsize>(bytes_.size()));
+    if (!output)
+        throw std::runtime_error("could not write command stream output file");
+}
+
+void CommandStream::append(Opcode opcode, const std::vector<std::uint8_t>& payload) {
+    if (payload.size() > 255)
+        throw std::length_error("command payload exceeds 255 bytes");
+
+    const std::size_t start = bytes_.size();
+    bytes_.push_back(0x47);
+    bytes_.push_back(0x46);
+    bytes_.push_back(0x01);
+    bytes_.push_back(static_cast<std::uint8_t>(opcode));
+    bytes_.push_back(static_cast<std::uint8_t>(payload.size()));
+    bytes_.insert(bytes_.end(), payload.begin(), payload.end());
+    const std::uint16_t crc = crc16Ccitt(bytes_.data() + start, bytes_.size() - start);
+    bytes_.push_back(static_cast<std::uint8_t>(crc >> 8));
+    bytes_.push_back(static_cast<std::uint8_t>(crc));
+}
+
+std::int16_t toQ8_8(float value) {
+    constexpr float minimum = -128.0F;
+    constexpr float maximum = 127.99609375F;
+    if (!std::isfinite(value) || value < minimum || value > maximum)
+        throw std::out_of_range("coordinate cannot be represented as signed Q8.8");
+    return static_cast<std::int16_t>(std::lround(value * 256.0F));
+}
+
+std::uint16_t crc16Ccitt(const std::uint8_t* data, std::size_t size) {
+    std::uint16_t crc = 0xFFFF;
+    for (std::size_t byte = 0; byte < size; ++byte) {
+        crc ^= static_cast<std::uint16_t>(data[byte]) << 8;
+        for (int bit = 0; bit < 8; ++bit)
+            crc = (crc & 0x8000) ? static_cast<std::uint16_t>((crc << 1) ^ 0x1021)
+                                 : static_cast<std::uint16_t>(crc << 1);
+    }
+    return crc;
+}
+
+}

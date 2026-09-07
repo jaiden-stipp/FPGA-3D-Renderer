@@ -14,4 +14,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) r
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl common iterative_signed_divider.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline transform_3d_pipeline.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline graphics_pipeline.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl command graphics_command_stream_decoder.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl command graphics_command_processor.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl system graphics_renderer_core.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl system graphics_stream_renderer.sv]
 set_global_assignment -name MIF_FILE [file join $::quartus(qip_path) rtl memory palette_default.mif]

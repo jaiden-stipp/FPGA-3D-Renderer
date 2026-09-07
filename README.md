@@ -1,12 +1,17 @@
 # 3D Graphics Renderer
 
-An FPGA-based 3D triangle renderer written in SystemVerilog. The design draws 3 dimensional triangles on a 640 x 480 VGA display without a CPU, GPU, or graphics library.
+An FPGA-based 3D triangle renderer written in SystemVerilog. The hardware draws 3D triangles on a 640 x 480 VGA display without a CPU or GPU. A C++ library builds custom scenes and command streams for the renderer.
 
 <img width="5712" height="4284" alt="image" src="https://github.com/user-attachments/assets/97d45a35-ecdc-47d5-a79c-db0eb28f1308" />
 
 
 ## Features
 
+- General ready/valid command interface for frame setup and triangle submission
+- Versioned binary command stream with CRC error detection
+- C++17 library for meshes, transforms, palettes, and command generation
+- Static-IP UDP input through the DE2-115 ENET0 port
+- Hardware ARP replies and a 2048-byte clock-crossing receive FIFO
 - 64-entry ready/valid queue for 3D triangle commands
 - Signed Q8.8 vertex coordinates
 - Y-axis model rotation and a fixed camera pitch
@@ -22,7 +27,13 @@ An FPGA-based 3D triangle renderer written in SystemVerilog. The design draws 3 
 ## Architecture
 
 ```text
-Triangle input
+C++ scene -> UDP receiver -> Binary decoder --+
+                                               |
+Built-in demo ---------------------------------+
+                                               |
+                                          Command mux
+                                               |
+Command processor
       |
 64-entry FIFO
       |
@@ -41,7 +52,9 @@ Indexed back buffer
 Palette lookup and double-buffered VGA output
 ```
 
-Each command contains three 3D vertices and one 8-bit color index. The transform stage rotates the vertices, applies the camera view, and clips geometry before and after projection. Clipped polygons are split back into triangles before rasterization.
+The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, and moves their payload bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. The command processor accepts `SET_ROTATION`, `SET_PALETTE`, `BEGIN_FRAME`, `DRAW_TRIANGLE`, and `END_FRAME`. It turns them into palette writes, clearing, triangle submission, draining, and page swaps. `SW[0]` selects the Ethernet command source or the built-in demo.
+
+Each draw command contains three 3D vertices and one 8-bit color index. The transform stage rotates the vertices, applies the camera view, and clips geometry before and after projection. Clipped polygons are split back into triangles before rasterization.
 
 The rasterizer steps through each triangle's bounding box. Edge equations find covered pixels, while reciprocal depth is interpolated across the triangle. A pixel is written only when its depth is closer than the value in the Z buffer.
 ## Memory
@@ -65,7 +78,7 @@ The vertices, projection, clipping, and depth testing were now working, but the 
 
 The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. VGA output runs at 25 MHz
 
-The current build uses 6,430 logic elements, 2,581 registers, 1,855,424 memory bits, and 54 embedded 9-bit multiplier elements.
+The current build uses 8,176 logic elements, 3,815 registers, 1,875,456 memory bits, and 54 embedded 9-bit multiplier elements.
 
 
 
@@ -74,15 +87,26 @@ The current build uses 6,430 logic elements, 2,581 registers, 1,855,424 memory b
 
 - `KEY[0]`: active-low reset
 - `KEY[1]`: restart the animation
+- `SW[0]` OFF: built-in rotating demo
+- `SW[0]` ON: Ethernet command input
+- `LEDG[0]`: Ethernet mode active
+- `LEDG[1]`: 100 Mb/s link active
+- `LEDG[2]`: UDP packet received
+- `LEDG[3]`: network or command error
 
 ## Project Layout
 
 - `rtl/common`: shared types and fixed-point divider
+- `rtl/command`: graphics command decoding and frame control
+- `rtl/system`: reusable command-to-VGA renderer core
+- `rtl/network`: MII, ARP, UDP parsing, and clock-crossing FIFO
 - `rtl/pipeline`: triangle queue, transform stage, clipping, and rasterizer
 - `rtl/memory`: framebuffer, Z-buffer, and palette RAM
 - `rtl/video`: VGA timing and display controller
 - `rtl/demo`: top-level design and demo scene
 - `sim`: ModelSim testbenches
+- `software`: C++ library, tests, and example scene generator
+- `docs`: binary command protocol
 
 ## Building
 
@@ -91,7 +115,32 @@ The current build uses 6,430 logic elements, 2,581 registers, 1,855,424 memory b
 3. Program `output_files/Graphics.sof` onto the DE2-115.
 4. Connect a VGA display and release `KEY[0]`.
 
+The default `SW[0]` OFF position runs the built-in demo. To test commands from a computer, follow [the Ethernet setup guide](docs/ethernet.md).
+
 ## Simulation
 
-The `sim` folder contains testbenches for the triangle queue, transform and clipping stages, rasterizer, VGA timing, double buffering, and demo scene.
+The `sim` folder contains testbenches for the command stream decoder, command processor, triangle queue, transform and clipping stages, rasterizer, VGA timing, double buffering, and demo scene.
 
+## C++ Library
+
+The library converts floating-point vertices to the renderer's signed Q8.8 format. It can apply translation, scale, and X, Y, or Z rotation to a mesh before encoding its triangles. It also generates palette and frame commands with the CRC expected by the FPGA decoder.
+
+```cpp
+fpga_renderer::CommandStream commands;
+commands.setPalette(1, {255, 64, 32});
+commands.setRotation(0);
+commands.beginFrame();
+commands.drawMesh(mesh, fpga_renderer::Mat4::scale(0.75F, 0.75F, 0.75F));
+commands.endFrame();
+commands.save("scene.gfx");
+```
+
+Build and test it with:
+
+```text
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build -C Release
+```
+
+Run `renderer_example` to generate a complete cube command stream. Run `renderer_udp_demo` to send that kind of scene to `192.168.7.2:4000`. See [the command protocol](docs/command_protocol.md) and [the Ethernet setup guide](docs/ethernet.md) for the full path.

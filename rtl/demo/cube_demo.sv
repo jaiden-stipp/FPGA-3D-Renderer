@@ -6,18 +6,10 @@ module cube_demo (
     input  logic         clk,
     input  logic         reset,
     input  logic         restart,
-
-    input  logic         pipeline_ready,
-    input  logic         pipeline_idle,
-    input  logic         clear_busy,
-    input  logic         swap_busy,
-    input  logic         swap_done,
-
-    output logic         triangle_valid,
-    output triangle_3d_t triangle_data,
-    output logic [7:0] rotation_angle,
-    output logic         clear_request,
-    output logic         swap_request
+    input  logic         command_ready,
+    input  logic         frame_done,
+    output logic         command_valid,
+    output graphics_command_t command_data
 );
 
     localparam logic signed [15:0] NEG_ONE = 16'shFF00;
@@ -39,22 +31,36 @@ module cube_demo (
     localparam int TRIANGLE_COUNT = 24;
 
     typedef enum logic [2:0] {
-        CLEAR_START,
-        CLEAR_WAIT,
+        SET_ROTATION,
+        BEGIN_FRAME,
         FEED,
-        DRAIN,
-        SWAP_START,
-        SWAP_WAIT
+        END_FRAME,
+        WAIT_FRAME
     } demo_state_t;
 
     demo_state_t state;
     logic [4:0] triangle_number;
     logic [7:0] angle;
+    triangle_3d_t triangle_data;
 
-    assign rotation_angle = angle;
-    assign triangle_valid = (state == FEED);
-    assign clear_request = (state == CLEAR_START);
-    assign swap_request = (state == SWAP_START);
+    always_comb begin
+        command_data = '0;
+        command_valid = 1'b1;
+
+        case (state)
+            SET_ROTATION: begin
+                command_data.opcode = GFX_CMD_SET_ROTATION;
+                command_data.argument[7:0] = angle;
+            end
+            BEGIN_FRAME: command_data.opcode = GFX_CMD_BEGIN_FRAME;
+            FEED: begin
+                command_data.opcode = GFX_CMD_DRAW_TRIANGLE;
+                command_data.triangle = triangle_data;
+            end
+            END_FRAME: command_data.opcode = GFX_CMD_END_FRAME;
+            default: command_valid = 1'b0;
+        endcase
+    end
 
     always_comb begin
         triangle_data = '0;
@@ -367,54 +373,49 @@ module cube_demo (
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
-            state <= CLEAR_START;
+            state <= SET_ROTATION;
             triangle_number <= 5'd0;
             angle <= 8'd0;
         end else if (restart) begin
-            state <= CLEAR_START;
+            state <= SET_ROTATION;
             triangle_number <= 5'd0;
             angle <= 8'd0;
         end else begin
             case (state)
-                CLEAR_START: begin
-                    state <= CLEAR_WAIT;
+                SET_ROTATION: begin
+                    if (command_ready)
+                        state <= BEGIN_FRAME;
                 end
 
-                CLEAR_WAIT: begin
-                    if (!clear_busy) begin
+                BEGIN_FRAME: begin
+                    if (command_ready) begin
                         triangle_number <= 5'd0;
                         state <= FEED;
                     end
                 end
 
                 FEED: begin
-                    if (pipeline_ready) begin
-                        if (triangle_number == TRIANGLE_COUNT - 1) begin
-                            state <= DRAIN;
-                        end else begin
+                    if (command_ready) begin
+                        if (triangle_number == TRIANGLE_COUNT - 1)
+                            state <= END_FRAME;
+                        else
                             triangle_number <= triangle_number + 1'b1;
-                        end
                     end
                 end
 
-                DRAIN: begin
-                    if (pipeline_idle && !clear_busy) begin
-                        state <= SWAP_START;
-                    end
+                END_FRAME: begin
+                    if (command_ready)
+                        state <= WAIT_FRAME;
                 end
 
-                SWAP_START: begin
-                    state <= SWAP_WAIT;
-                end
-
-                SWAP_WAIT: begin
-                    if (swap_done && !swap_busy) begin
+                WAIT_FRAME: begin
+                    if (frame_done) begin
                         angle <= angle + 8'd1;
-                        state <= CLEAR_START;
+                        state <= SET_ROTATION;
                     end
                 end
 
-                default: state <= CLEAR_START;
+                default: state <= SET_ROTATION;
             endcase
         end
     end

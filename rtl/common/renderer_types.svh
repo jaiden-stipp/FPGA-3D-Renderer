@@ -27,4 +27,18 @@ typedef struct packed {
     logic [7:0] color;
 } triangle_3d_t;
 
+typedef enum logic [2:0] {
+    GFX_CMD_SET_ROTATION = 3'd0,
+    GFX_CMD_BEGIN_FRAME = 3'd1,
+    GFX_CMD_DRAW_TRIANGLE = 3'd2,
+    GFX_CMD_END_FRAME = 3'd3,
+    GFX_CMD_SET_PALETTE = 3'd4
+} graphics_command_opcode_t;
+
+typedef struct packed {
+    graphics_command_opcode_t opcode;
+    triangle_3d_t triangle;
+    logic [31:0] argument;
+} graphics_command_t;
+
 `endif

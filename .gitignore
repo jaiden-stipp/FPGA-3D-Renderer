@@ -19,6 +19,11 @@ work/
 transcript
 vsim.wlf
 
+# C++ generated files
+build/
+cmake-build-*/
+*.gfx
+
 # Editor and backup files
 *.bak
 *~

@@ -16,6 +16,14 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/triangle_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/transform_3d_pipeline.sv
 set_global_assignment -name VERILOG_FILE rtl/memory/palette_ip.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/graphics_pipeline.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/command/graphics_command_stream_decoder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/command/graphics_command_processor.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_renderer_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_stream_renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/async_byte_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_udp_receiver.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_arp_responder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/ethernet_command_receiver.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/cube_demo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/de2_115_top.sv
 set_global_assignment -name VERILOG_FILE rtl/memory/framebuffer_ip.v
@@ -43,6 +51,54 @@ set_location_assignment PIN_M21 -to KEY[1]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CLOCK_50
 set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[0]
 set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[1]
+
+# SW[0] selects the Ethernet command source when set to ON.
+set_location_assignment PIN_AB28 -to SW[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to SW[0]
+
+set_location_assignment PIN_E21 -to LEDG[0]
+set_location_assignment PIN_E22 -to LEDG[1]
+set_location_assignment PIN_E25 -to LEDG[2]
+set_location_assignment PIN_E24 -to LEDG[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[3]
+
+# ENET0 in 100 Mb/s MII mode. JP1 must be set to MII before power-up.
+set_location_assignment PIN_A15 -to ENET0_RX_CLK
+set_location_assignment PIN_C16 -to ENET0_RX_DATA[0]
+set_location_assignment PIN_D16 -to ENET0_RX_DATA[1]
+set_location_assignment PIN_D17 -to ENET0_RX_DATA[2]
+set_location_assignment PIN_C15 -to ENET0_RX_DATA[3]
+set_location_assignment PIN_C17 -to ENET0_RX_DV
+set_location_assignment PIN_D18 -to ENET0_RX_ER
+set_location_assignment PIN_B17 -to ENET0_TX_CLK
+set_location_assignment PIN_C18 -to ENET0_TX_DATA[0]
+set_location_assignment PIN_D19 -to ENET0_TX_DATA[1]
+set_location_assignment PIN_A19 -to ENET0_TX_DATA[2]
+set_location_assignment PIN_B19 -to ENET0_TX_DATA[3]
+set_location_assignment PIN_A18 -to ENET0_TX_EN
+set_location_assignment PIN_B18 -to ENET0_TX_ER
+set_location_assignment PIN_C19 -to ENET0_RST_N
+set_location_assignment PIN_C14 -to ENET0_LINK100
+
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_CLK
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_DATA[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_DATA[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_DATA[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_DATA[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_DV
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RX_ER
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_CLK
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_DATA[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_DATA[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_DATA[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_DATA[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_EN
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_ER
+set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RST_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ENET0_LINK100
 
 # ADV7123 VGA DAC: eight bits per color channel.
 set_location_assignment PIN_E12 -to VGA_R[0]
