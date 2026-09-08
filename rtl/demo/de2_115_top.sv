@@ -30,6 +30,7 @@ module de2_115_top (
     logic command_ready;
     logic command_error;
     logic frame_done;
+    logic [31:0] frame_done_id;
     logic key1_previous;
     logic demo_restart;
     logic switch_sync1;
@@ -81,7 +82,7 @@ module de2_115_top (
     assign network_ready = network_mode && command_ready;
     assign demo_ready = !network_mode && command_ready;
     assign LEDG[0] = network_mode;
-    assign LEDG[1] = network_mode && ENET0_LINK100;
+    assign LEDG[1] = network_mode && !ENET0_LINK100;
     assign LEDG[2] = network_mode && network_packet_seen;
     assign LEDG[3] = network_mode && network_error_seen;
 
@@ -109,6 +110,9 @@ module de2_115_top (
         .command_data(network_command),
         .command_valid(network_valid),
         .command_ready(network_ready),
+        .command_error(command_error),
+        .frame_done(frame_done),
+        .frame_done_id(frame_done_id),
         .decoder_error(network_decoder_error),
         .receive_overflow(network_overflow),
         .packet_seen(network_packet_seen)
@@ -123,6 +127,7 @@ module de2_115_top (
         .command_ready(command_ready),
         .command_error(command_error),
         .frame_done(frame_done),
+        .frame_done_id(frame_done_id),
         .VGA_R(VGA_R),
         .VGA_G(VGA_G),
         .VGA_B(VGA_B),

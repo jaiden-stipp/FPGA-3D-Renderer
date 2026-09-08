@@ -15,6 +15,21 @@ void appendFixed(std::vector<std::uint8_t>& output, float value) {
     output.push_back(static_cast<std::uint8_t>(fixed));
 }
 
+bool sameVertex(const Vec3& left, const Vec3& right) {
+    return left.x == right.x && left.y == right.y && left.z == right.z;
+}
+
+std::uint8_t findVertex(std::vector<Vec3>& vertices, const Vec3& vertex) {
+    for (std::size_t index = 0; index < vertices.size(); ++index) {
+        if (sameVertex(vertices[index], vertex))
+            return static_cast<std::uint8_t>(index);
+    }
+    if (vertices.size() >= 128)
+        throw std::length_error("mesh exceeds 128 unique vertices");
+    vertices.push_back(vertex);
+    return static_cast<std::uint8_t>(vertices.size() - 1);
+}
+
 }
 
 Mat4 Mat4::identity() {
@@ -113,6 +128,8 @@ const std::vector<Triangle>& Mesh::triangles() const {
 void CommandStream::clear() {
     bytes_.clear();
     frame_open_ = false;
+    has_frame_id_ = false;
+    frame_id_ = 0;
 }
 
 void CommandStream::setRotation(std::uint8_t angle) {
@@ -127,11 +144,70 @@ void CommandStream::setPalette(std::uint8_t index, Rgb color) {
     append(Opcode::SetPalette, {index, color.red, color.green, color.blue});
 }
 
-void CommandStream::beginFrame() {
+void CommandStream::uploadMesh(std::uint8_t handle, const Mesh& mesh) {
+    if (frame_open_)
+        throw std::logic_error("meshes can only be uploaded between frames");
+    if (handle >= 16)
+        throw std::out_of_range("mesh handle must be between 0 and 15");
+    if (mesh.triangles().empty())
+        throw std::invalid_argument("cannot upload an empty mesh");
+    if (mesh.triangles().size() > 256)
+        throw std::length_error("mesh exceeds 256 triangles");
+
+    struct IndexedTriangle {
+        std::uint8_t index0;
+        std::uint8_t index1;
+        std::uint8_t index2;
+        std::uint8_t color;
+    };
+    std::vector<Vec3> vertices;
+    std::vector<IndexedTriangle> triangles;
+    triangles.reserve(mesh.triangles().size());
+    for (const Triangle& triangle : mesh.triangles()) {
+        triangles.push_back({findVertex(vertices, triangle.v0),
+                             findVertex(vertices, triangle.v1),
+                             findVertex(vertices, triangle.v2), triangle.color});
+    }
+
+    append(Opcode::DefineMesh, {
+        handle,
+        static_cast<std::uint8_t>(vertices.size() >> 8),
+        static_cast<std::uint8_t>(vertices.size()),
+        static_cast<std::uint8_t>(triangles.size() >> 8),
+        static_cast<std::uint8_t>(triangles.size())
+    });
+    for (std::size_t index = 0; index < vertices.size(); ++index) {
+        std::vector<std::uint8_t> payload{handle, static_cast<std::uint8_t>(index)};
+        appendFixed(payload, vertices[index].x);
+        appendFixed(payload, vertices[index].y);
+        appendFixed(payload, vertices[index].z);
+        append(Opcode::UploadVertex, payload);
+    }
+    for (std::size_t index = 0; index < triangles.size(); ++index) {
+        append(Opcode::UploadIndex, {
+            handle,
+            static_cast<std::uint8_t>(index >> 8),
+            static_cast<std::uint8_t>(index),
+            triangles[index].index0,
+            triangles[index].index1,
+            triangles[index].index2,
+            triangles[index].color
+        });
+    }
+}
+
+void CommandStream::beginFrame(std::uint32_t frameId) {
     if (frame_open_)
         throw std::logic_error("a frame is already open");
-    append(Opcode::BeginFrame, {});
+    append(Opcode::BeginFrame, {
+        static_cast<std::uint8_t>(frameId >> 24),
+        static_cast<std::uint8_t>(frameId >> 16),
+        static_cast<std::uint8_t>(frameId >> 8),
+        static_cast<std::uint8_t>(frameId)
+    });
     frame_open_ = true;
+    has_frame_id_ = true;
+    frame_id_ = frameId;
 }
 
 void CommandStream::drawTriangle(const Triangle& triangle) {
@@ -163,6 +239,28 @@ void CommandStream::drawMesh(const Mesh& mesh, const Mat4& transform) {
     }
 }
 
+void CommandStream::drawMesh(std::uint8_t handle, const Mat4& transform) {
+    if (!frame_open_)
+        throw std::logic_error("draw commands require an open frame");
+    if (handle >= 16)
+        throw std::out_of_range("mesh handle must be between 0 and 15");
+    constexpr float epsilon = 0.00001F;
+    if (std::abs(transform.values[12]) > epsilon ||
+        std::abs(transform.values[13]) > epsilon ||
+        std::abs(transform.values[14]) > epsilon ||
+        std::abs(transform.values[15] - 1.0F) > epsilon)
+        throw std::invalid_argument("hardware mesh transforms must be affine");
+
+    std::vector<std::uint8_t> payload;
+    payload.reserve(25);
+    payload.push_back(handle);
+    for (std::size_t row = 0; row < 3; ++row) {
+        for (std::size_t column = 0; column < 4; ++column)
+            appendFixed(payload, transform.values[row * 4 + column]);
+    }
+    append(Opcode::DrawMesh, payload);
+}
+
 void CommandStream::endFrame() {
     if (!frame_open_)
         throw std::logic_error("there is no open frame to end");
@@ -172,6 +270,14 @@ void CommandStream::endFrame() {
 
 const std::vector<std::uint8_t>& CommandStream::bytes() const {
     return bytes_;
+}
+
+std::uint32_t CommandStream::frameId() const {
+    if (!has_frame_id_)
+        throw std::logic_error("command stream does not contain a frame");
+    if (frame_open_)
+        throw std::logic_error("command stream frame has not been ended");
+    return frame_id_;
 }
 
 void CommandStream::save(const std::filesystem::path& path) const {

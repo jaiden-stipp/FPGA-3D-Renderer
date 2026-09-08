@@ -121,8 +121,8 @@ module graphics_command_stream_decoder (
                             end
                             8'd1: begin
                                 command_data.opcode <= GFX_CMD_BEGIN_FRAME;
-                                if (byte_data == 8'd0)
-                                    state <= CRC_HIGH;
+                                if (byte_data == 8'd4)
+                                    state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
@@ -155,6 +155,42 @@ module graphics_command_stream_decoder (
                                     state <= SYNC_G;
                                 end
                             end
+                            8'd5: begin
+                                command_data.opcode <= GFX_CMD_DEFINE_MESH;
+                                if (byte_data == 8'd5)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
+                            8'd6: begin
+                                command_data.opcode <= GFX_CMD_UPLOAD_VERTEX;
+                                if (byte_data == 8'd8)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
+                            8'd7: begin
+                                command_data.opcode <= GFX_CMD_UPLOAD_INDEX;
+                                if (byte_data == 8'd7)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
+                            8'd8: begin
+                                command_data.opcode <= GFX_CMD_DRAW_MESH;
+                                if (byte_data == 8'd25)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
                             default: begin
                                 decoder_error <= 1'b1;
                                 state <= SYNC_G;
@@ -166,6 +202,14 @@ module graphics_command_stream_decoder (
                         crc <= crc16_byte(crc, byte_data);
                         case (opcode_byte)
                             8'd0: command_data.argument[7:0] <= byte_data;
+                            8'd1: begin
+                                case (payload_index)
+                                    8'd0: command_data.argument[31:24] <= byte_data;
+                                    8'd1: command_data.argument[23:16] <= byte_data;
+                                    8'd2: command_data.argument[15:8] <= byte_data;
+                                    default: command_data.argument[7:0] <= byte_data;
+                                endcase
+                            end
                             8'd2: begin
                                 case (payload_index)
                                     8'd0: command_data.triangle.x0[15:8] <= byte_data;
@@ -195,6 +239,67 @@ module graphics_command_stream_decoder (
                                     8'd1: command_data.argument[23:16] <= byte_data;
                                     8'd2: command_data.argument[15:8] <= byte_data;
                                     default: command_data.argument[7:0] <= byte_data;
+                                endcase
+                            end
+                            8'd5: begin
+                                case (payload_index)
+                                    8'd0: command_data.mesh_handle <= byte_data;
+                                    8'd1: command_data.mesh_vertex_count[15:8] <= byte_data;
+                                    8'd2: command_data.mesh_vertex_count[7:0] <= byte_data;
+                                    8'd3: command_data.mesh_triangle_count[15:8] <= byte_data;
+                                    default: command_data.mesh_triangle_count[7:0] <= byte_data;
+                                endcase
+                            end
+                            8'd6: begin
+                                case (payload_index)
+                                    8'd0: command_data.mesh_handle <= byte_data;
+                                    8'd1: command_data.mesh_element[7:0] <= byte_data;
+                                    8'd2: command_data.vertex_x[15:8] <= byte_data;
+                                    8'd3: command_data.vertex_x[7:0] <= byte_data;
+                                    8'd4: command_data.vertex_y[15:8] <= byte_data;
+                                    8'd5: command_data.vertex_y[7:0] <= byte_data;
+                                    8'd6: command_data.vertex_z[15:8] <= byte_data;
+                                    default: command_data.vertex_z[7:0] <= byte_data;
+                                endcase
+                            end
+                            8'd7: begin
+                                case (payload_index)
+                                    8'd0: command_data.mesh_handle <= byte_data;
+                                    8'd1: command_data.mesh_element[15:8] <= byte_data;
+                                    8'd2: command_data.mesh_element[7:0] <= byte_data;
+                                    8'd3: command_data.mesh_index0 <= byte_data;
+                                    8'd4: command_data.mesh_index1 <= byte_data;
+                                    8'd5: command_data.mesh_index2 <= byte_data;
+                                    default: command_data.mesh_color <= byte_data;
+                                endcase
+                            end
+                            8'd8: begin
+                                case (payload_index)
+                                    8'd0: command_data.mesh_handle <= byte_data;
+                                    8'd1: command_data.model_matrix.m00[15:8] <= byte_data;
+                                    8'd2: command_data.model_matrix.m00[7:0] <= byte_data;
+                                    8'd3: command_data.model_matrix.m01[15:8] <= byte_data;
+                                    8'd4: command_data.model_matrix.m01[7:0] <= byte_data;
+                                    8'd5: command_data.model_matrix.m02[15:8] <= byte_data;
+                                    8'd6: command_data.model_matrix.m02[7:0] <= byte_data;
+                                    8'd7: command_data.model_matrix.m03[15:8] <= byte_data;
+                                    8'd8: command_data.model_matrix.m03[7:0] <= byte_data;
+                                    8'd9: command_data.model_matrix.m10[15:8] <= byte_data;
+                                    8'd10: command_data.model_matrix.m10[7:0] <= byte_data;
+                                    8'd11: command_data.model_matrix.m11[15:8] <= byte_data;
+                                    8'd12: command_data.model_matrix.m11[7:0] <= byte_data;
+                                    8'd13: command_data.model_matrix.m12[15:8] <= byte_data;
+                                    8'd14: command_data.model_matrix.m12[7:0] <= byte_data;
+                                    8'd15: command_data.model_matrix.m13[15:8] <= byte_data;
+                                    8'd16: command_data.model_matrix.m13[7:0] <= byte_data;
+                                    8'd17: command_data.model_matrix.m20[15:8] <= byte_data;
+                                    8'd18: command_data.model_matrix.m20[7:0] <= byte_data;
+                                    8'd19: command_data.model_matrix.m21[15:8] <= byte_data;
+                                    8'd20: command_data.model_matrix.m21[7:0] <= byte_data;
+                                    8'd21: command_data.model_matrix.m22[15:8] <= byte_data;
+                                    8'd22: command_data.model_matrix.m22[7:0] <= byte_data;
+                                    8'd23: command_data.model_matrix.m23[15:8] <= byte_data;
+                                    default: command_data.model_matrix.m23[7:0] <= byte_data;
                                 endcase
                             end
                             default: begin

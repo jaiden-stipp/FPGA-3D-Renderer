@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     commands.setPalette(5, {255, 48, 255});
     commands.setPalette(6, {48, 255, 255});
     commands.setRotation(0);
-    commands.beginFrame();
+    commands.beginFrame(1);
     commands.drawMesh(makeCube(), Mat4::scale(0.75F, 0.75F, 0.75F));
     commands.endFrame();
     commands.save(output);

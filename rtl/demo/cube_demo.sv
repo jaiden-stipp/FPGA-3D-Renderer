@@ -41,6 +41,7 @@ module cube_demo (
     demo_state_t state;
     logic [4:0] triangle_number;
     logic [7:0] angle;
+    logic [31:0] frame_id;
     triangle_3d_t triangle_data;
 
     always_comb begin
@@ -52,7 +53,10 @@ module cube_demo (
                 command_data.opcode = GFX_CMD_SET_ROTATION;
                 command_data.argument[7:0] = angle;
             end
-            BEGIN_FRAME: command_data.opcode = GFX_CMD_BEGIN_FRAME;
+            BEGIN_FRAME: begin
+                command_data.opcode = GFX_CMD_BEGIN_FRAME;
+                command_data.argument = frame_id;
+            end
             FEED: begin
                 command_data.opcode = GFX_CMD_DRAW_TRIANGLE;
                 command_data.triangle = triangle_data;
@@ -376,10 +380,12 @@ module cube_demo (
             state <= SET_ROTATION;
             triangle_number <= 5'd0;
             angle <= 8'd0;
+            frame_id <= 32'd0;
         end else if (restart) begin
             state <= SET_ROTATION;
             triangle_number <= 5'd0;
             angle <= 8'd0;
+            frame_id <= 32'd0;
         end else begin
             case (state)
                 SET_ROTATION: begin
@@ -411,6 +417,7 @@ module cube_demo (
                 WAIT_FRAME: begin
                     if (frame_done) begin
                         angle <= angle + 8'd1;
+                        frame_id <= frame_id + 1'b1;
                         state <= SET_ROTATION;
                     end
                 end

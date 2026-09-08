@@ -10,6 +10,7 @@ module cube_demo_tb;
     logic command_ready;
     logic command_error;
     logic frame_done;
+    logic [31:0] frame_done_id;
     logic triangle_ready;
     logic pipeline_idle;
     logic clear_busy;
@@ -45,6 +46,7 @@ module cube_demo_tb;
         .command_ready(command_ready),
         .command_error(command_error),
         .frame_done(frame_done),
+        .frame_done_id(frame_done_id),
         .triangle_ready(triangle_ready),
         .pipeline_idle(pipeline_idle),
         .clear_busy(clear_busy),
@@ -52,6 +54,26 @@ module cube_demo_tb;
         .swap_done(swap_done),
         .triangle_data(triangle_data),
         .triangle_valid(triangle_valid),
+        .mesh_define_write(),
+        .mesh_vertex_write(),
+        .mesh_index_write(),
+        .mesh_handle(),
+        .mesh_element(),
+        .mesh_vertex_count(),
+        .mesh_triangle_count(),
+        .mesh_index0(),
+        .mesh_index1(),
+        .mesh_index2(),
+        .mesh_color(),
+        .mesh_vertex_x(),
+        .mesh_vertex_y(),
+        .mesh_vertex_z(),
+        .mesh_upload_error(1'b0),
+        .mesh_draw_valid(),
+        .mesh_draw_ready(1'b1),
+        .mesh_draw_matrix(),
+        .mesh_draw_done(1'b0),
+        .mesh_draw_error(1'b0),
         .rotation_angle(rotation_angle),
         .palette_write(palette_write),
         .palette_address(palette_address),

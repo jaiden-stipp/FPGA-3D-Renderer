@@ -9,6 +9,7 @@ module async_byte_fifo_tb;
     logic [7:0] write_data = '0;
     logic write_valid = 1'b0;
     logic write_ready;
+    logic [4:0] write_free;
     logic [7:0] read_data;
     logic read_valid;
     logic read_ready = 1'b0;
@@ -25,6 +26,7 @@ module async_byte_fifo_tb;
         .write_data(write_data),
         .write_valid(write_valid),
         .write_ready(write_ready),
+        .write_free(write_free),
         .read_clk(read_clk),
         .read_reset(read_reset),
         .read_data(read_data),
@@ -45,6 +47,9 @@ module async_byte_fifo_tb;
         write_reset = 1'b0;
         read_reset = 1'b0;
         read_ready = 1'b1;
+        repeat (2) @(posedge write_clk);
+        if (write_free != 5'd16)
+            $fatal(1, "FIFO did not report its full free capacity after reset");
 
         for (integer value = 0; value < 12; value = value + 1) begin
             @(negedge write_clk);

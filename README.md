@@ -10,7 +10,10 @@ An FPGA-based 3D triangle renderer written in SystemVerilog. The hardware draws 
 - General ready/valid command interface for frame setup and triangle submission
 - Versioned binary command stream with CRC error detection
 - C++17 library for meshes, transforms, palettes, and command generation
-- Static-IP UDP input through the DE2-115 ENET0 port
+- Sixteen persistent indexed-mesh handles with on-chip vertex and index RAM
+- Per-draw fixed-point 3 x 4 model matrices
+- Reliable, sequenced UDP input through the DE2-115 ENET0 port
+- Frame IDs, packet acknowledgements, FIFO-space reports, and display completion status
 - Hardware ARP replies and a 2048-byte clock-crossing receive FIFO
 - 64-entry ready/valid queue for 3D triangle commands
 - Signed Q8.8 vertex coordinates
@@ -35,6 +38,8 @@ Built-in demo ---------------------------------+
                                                |
 Command processor
       |
+Indexed mesh RAM and vertex fetch, or direct triangle
+      |
 64-entry FIFO
       |
 3D rotation and camera transform
@@ -52,9 +57,11 @@ Indexed back buffer
 Palette lookup and double-buffered VGA output
 ```
 
-The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, and moves their payload bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. The command processor accepts `SET_ROTATION`, `SET_PALETTE`, `BEGIN_FRAME`, `DRAW_TRIANGLE`, and `END_FRAME`. It turns them into palette writes, clearing, triangle submission, draining, and page swaps. `SW[0]` selects the Ethernet command source or the built-in demo.
+The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. It acknowledges each packet with the submission ID, sequence number, result, and free FIFO space. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. The command processor handles palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA sends the displayed frame ID back to the computer. `SW[0]` selects Ethernet commands or the built-in demo.
 
 Each draw command contains three 3D vertices and one 8-bit color index. The transform stage rotates the vertices, applies the camera view, and clips geometry before and after projection. Clipped polygons are split back into triangles before rasterization.
+
+Indexed meshes can be uploaded once and reused. Each indexed draw fetches three vertices from on-chip RAM, applies its own Q8.8 3 x 4 model matrix, and sends the resulting triangle through the same graphics pipeline. The current fixed allocation supports 16 handles, 128 vertices per handle, and 256 triangles per handle.
 
 The rasterizer steps through each triangle's bounding box. Edge equations find covered pixels, while reciprocal depth is interpolated across the triangle. A pixel is written only when its depth is closer than the value in the Z buffer.
 ## Memory
@@ -63,8 +70,10 @@ The rasterizer steps through each triangle's bounding box. Edge equations find c
 - Color page 1: 320 x 240 x 8 bits
 - Z buffer: 320 x 240 x 8 bits
 - Render memory: 1,843,200 bits
+- Indexed vertex store: 98,304 bits
+- Indexed triangle store: 118,784 fitted bits
 
-The color pages and Z buffer use Intel `altsyncram` M9K block RAM. Quartus reports 1,855,424 total memory bits, including the palette and other inferred storage.
+The color pages, Z buffer, vertex store, and triangle store use Intel `altsyncram` M9K block RAM. Quartus reports 2,092,544 total memory bits, including the palette, network FIFO, and other inferred storage.
 
 ## Debugging Process
 <img width="4032" height="3024" alt="image" src="https://github.com/user-attachments/assets/6147bdff-53cc-4008-98f4-3e645eb5851b" />
@@ -78,7 +87,7 @@ The vertices, projection, clipping, and depth testing were now working, but the 
 
 The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. VGA output runs at 25 MHz
 
-The current build uses 8,176 logic elements, 3,815 registers, 1,875,456 memory bits, and 54 embedded 9-bit multiplier elements.
+The current build uses 11,160 logic elements, 5,756 registers, 2,092,544 memory bits, and 72 embedded 9-bit multiplier elements. It meets all setup and hold constraints at 50 MHz.
 
 
 
@@ -91,7 +100,7 @@ The current build uses 8,176 logic elements, 3,815 registers, 1,875,456 memory b
 - `SW[0]` ON: Ethernet command input
 - `LEDG[0]`: Ethernet mode active
 - `LEDG[1]`: 100 Mb/s link active
-- `LEDG[2]`: UDP packet received
+- `LEDG[2]`: UDP packet accepted
 - `LEDG[3]`: network or command error
 
 ## Project Layout
@@ -129,10 +138,12 @@ The library converts floating-point vertices to the renderer's signed Q8.8 forma
 fpga_renderer::CommandStream commands;
 commands.setPalette(1, {255, 64, 32});
 commands.setRotation(0);
-commands.beginFrame();
-commands.drawMesh(mesh, fpga_renderer::Mat4::scale(0.75F, 0.75F, 0.75F));
+commands.beginFrame(1);
+commands.drawMesh(0, fpga_renderer::Mat4::scale(0.75F, 0.75F, 0.75F));
 commands.endFrame();
-commands.save("scene.gfx");
+fpga_renderer::RendererClient renderer("192.168.7.2");
+renderer.uploadMesh(0, mesh);
+const auto status = renderer.submit(commands);
 ```
 
 Build and test it with:
@@ -143,4 +154,4 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-Run `renderer_example` to generate a complete cube command stream. Run `renderer_udp_demo` to send that kind of scene to `192.168.7.2:4000`. See [the command protocol](docs/command_protocol.md) and [the Ethernet setup guide](docs/ethernet.md) for the full path.
+Run `renderer_example` to generate a complete cube command stream. Run `renderer_udp_demo` to split and send that scene to `192.168.7.2:4000`, retry packets when needed, and wait for the displayed-frame response. `renderer_scene_tests` adds palette, depth, clipping, multi-packet stress, and orbit-animation tests for the VGA display. See [the command protocol](docs/command_protocol.md) and [the Ethernet setup guide](docs/ethernet.md) for the full path.

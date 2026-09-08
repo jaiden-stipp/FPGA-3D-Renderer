@@ -13,6 +13,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_clock_div2.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/common/iterative_signed_divider.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/renderer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/triangle_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/indexed_mesh_store.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/transform_3d_pipeline.sv
 set_global_assignment -name VERILOG_FILE rtl/memory/palette_ip.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/graphics_pipeline.sv
@@ -22,7 +23,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_renderer_core
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_stream_renderer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/async_byte_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_udp_receiver.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_arp_responder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_response_transmitter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/ethernet_command_receiver.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/cube_demo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/demo/de2_115_top.sv
@@ -174,6 +175,8 @@ set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_BLANK_N
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_SYNC_N
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_HS
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_VS
+
+
 
 
 

@@ -11,6 +11,9 @@ target_link_libraries(renderer_example PRIVATE fpga_renderer)
 add_executable(renderer_udp_demo examples/ethernet_demo.cpp)
 target_link_libraries(renderer_udp_demo PRIVATE fpga_renderer)
 
+add_executable(renderer_scene_tests examples/scene_tests.cpp)
+target_link_libraries(renderer_scene_tests PRIVATE fpga_renderer)
+
 add_executable(renderer_tests tests/renderer_tests.cpp)
 target_link_libraries(renderer_tests PRIVATE fpga_renderer)
 add_test(NAME renderer_tests COMMAND renderer_tests)

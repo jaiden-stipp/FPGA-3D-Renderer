@@ -80,6 +80,72 @@ module graphics_command_stream_decoder_tb;
         send_byte(8'h47);
         send_byte(8'h46);
         send_byte(8'h01);
+        send_byte(8'h05);
+        send_byte(8'h05);
+        send_byte(8'h02);
+        send_byte(8'h00);
+        send_byte(8'h03);
+        send_byte(8'h00);
+        send_byte(8'h01);
+        send_byte(8'hFA);
+        send_byte(8'h0F);
+        wait (command_valid);
+        if (command_data.opcode != GFX_CMD_DEFINE_MESH ||
+            command_data.mesh_handle != 8'd2 ||
+            command_data.mesh_vertex_count != 16'd3 ||
+            command_data.mesh_triangle_count != 16'd1)
+            $fatal(1, "mesh descriptor decoded incorrectly");
+        accept_command();
+
+        send_byte(8'h47);
+        send_byte(8'h46);
+        send_byte(8'h01);
+        send_byte(8'h08);
+        send_byte(8'h19);
+        send_byte(8'h02);
+        send_byte(8'h01); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h02); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h01); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h01); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h88); send_byte(8'h1C);
+        wait (command_valid);
+        if (command_data.opcode != GFX_CMD_DRAW_MESH ||
+            command_data.mesh_handle != 8'd2 ||
+            command_data.model_matrix.m00 != 16'sh0100 ||
+            command_data.model_matrix.m03 != 16'sh0200 ||
+            command_data.model_matrix.m11 != 16'sh0100 ||
+            command_data.model_matrix.m22 != 16'sh0100)
+            $fatal(1, "indexed draw matrix decoded incorrectly");
+        accept_command();
+
+        send_byte(8'h47);
+        send_byte(8'h46);
+        send_byte(8'h01);
+        send_byte(8'h01);
+        send_byte(8'h04);
+        send_byte(8'h12);
+        send_byte(8'h34);
+        send_byte(8'h56);
+        send_byte(8'h78);
+        send_byte(8'h40);
+        send_byte(8'hF0);
+        wait (command_valid);
+        if (command_data.opcode != GFX_CMD_BEGIN_FRAME ||
+            command_data.argument != 32'h12345678)
+            $fatal(1, "begin-frame ID decoded incorrectly");
+        accept_command();
+
+        send_byte(8'h47);
+        send_byte(8'h46);
+        send_byte(8'h01);
         send_byte(8'h04);
         send_byte(8'h04);
         send_byte(8'h07);

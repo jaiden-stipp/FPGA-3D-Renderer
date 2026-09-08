@@ -10,12 +10,33 @@ module graphics_command_processor_tb;
     logic command_ready;
     logic command_error;
     logic frame_done;
+    logic [31:0] frame_done_id;
     logic triangle_ready;
     logic pipeline_idle;
     logic clear_busy;
     logic swap_busy;
     logic swap_done;
     logic triangle_valid;
+    logic mesh_define_write;
+    logic mesh_vertex_write;
+    logic mesh_index_write;
+    logic [7:0] mesh_handle;
+    logic [15:0] mesh_element;
+    logic [15:0] mesh_vertex_count;
+    logic [15:0] mesh_triangle_count;
+    logic [7:0] mesh_index0;
+    logic [7:0] mesh_index1;
+    logic [7:0] mesh_index2;
+    logic [7:0] mesh_color;
+    logic signed [15:0] mesh_vertex_x;
+    logic signed [15:0] mesh_vertex_y;
+    logic signed [15:0] mesh_vertex_z;
+    logic mesh_upload_error;
+    logic mesh_draw_valid;
+    logic mesh_draw_ready;
+    model_matrix_3x4_t mesh_draw_matrix;
+    logic mesh_draw_done;
+    logic mesh_draw_error;
     logic [7:0] rotation_angle;
     logic palette_write;
     logic [7:0] palette_address;
@@ -34,6 +55,7 @@ module graphics_command_processor_tb;
         .command_ready(command_ready),
         .command_error(command_error),
         .frame_done(frame_done),
+        .frame_done_id(frame_done_id),
         .triangle_ready(triangle_ready),
         .pipeline_idle(pipeline_idle),
         .clear_busy(clear_busy),
@@ -41,6 +63,26 @@ module graphics_command_processor_tb;
         .swap_done(swap_done),
         .triangle_data(triangle_data),
         .triangle_valid(triangle_valid),
+        .mesh_define_write(mesh_define_write),
+        .mesh_vertex_write(mesh_vertex_write),
+        .mesh_index_write(mesh_index_write),
+        .mesh_handle(mesh_handle),
+        .mesh_element(mesh_element),
+        .mesh_vertex_count(mesh_vertex_count),
+        .mesh_triangle_count(mesh_triangle_count),
+        .mesh_index0(mesh_index0),
+        .mesh_index1(mesh_index1),
+        .mesh_index2(mesh_index2),
+        .mesh_color(mesh_color),
+        .mesh_vertex_x(mesh_vertex_x),
+        .mesh_vertex_y(mesh_vertex_y),
+        .mesh_vertex_z(mesh_vertex_z),
+        .mesh_upload_error(mesh_upload_error),
+        .mesh_draw_valid(mesh_draw_valid),
+        .mesh_draw_ready(mesh_draw_ready),
+        .mesh_draw_matrix(mesh_draw_matrix),
+        .mesh_draw_done(mesh_draw_done),
+        .mesh_draw_error(mesh_draw_error),
         .rotation_angle(rotation_angle),
         .palette_write(palette_write),
         .palette_address(palette_address),
@@ -74,6 +116,10 @@ module graphics_command_processor_tb;
         clear_busy = 1'b0;
         swap_busy = 1'b0;
         swap_done = 1'b0;
+        mesh_upload_error = 1'b0;
+        mesh_draw_ready = 1'b1;
+        mesh_draw_done = 1'b0;
+        mesh_draw_error = 1'b0;
 
         repeat (2) @(posedge clk);
         @(negedge clk);
@@ -95,6 +141,20 @@ module graphics_command_processor_tb;
         @(negedge clk);
         command_valid = 1'b0;
 
+        command_data.mesh_handle = 8'd2;
+        command_data.mesh_vertex_count = 16'd3;
+        command_data.mesh_triangle_count = 16'd1;
+        @(negedge clk);
+        command_data.opcode = GFX_CMD_DEFINE_MESH;
+        command_valid = 1'b1;
+        #1;
+        if (!mesh_define_write || mesh_handle != 8'd2 ||
+            mesh_vertex_count != 16'd3 || mesh_triangle_count != 16'd1)
+            $fatal(1, "mesh definition command was not forwarded");
+        @(negedge clk);
+        command_valid = 1'b0;
+
+        command_data.argument = 32'h12345678;
         fork
             send_command(GFX_CMD_BEGIN_FRAME);
             begin
@@ -127,6 +187,21 @@ module graphics_command_processor_tb;
         command_valid = 1'b0;
         triangle_ready = 1'b0;
 
+        command_data.mesh_handle = 8'd2;
+        command_data.model_matrix = '0;
+        command_data.model_matrix.m00 = 16'sh0100;
+        command_data.model_matrix.m11 = 16'sh0100;
+        command_data.model_matrix.m22 = 16'sh0100;
+        send_command(GFX_CMD_DRAW_MESH);
+        if (command_ready)
+            $fatal(1, "processor accepted commands while indexed draw was active");
+        @(negedge clk);
+        mesh_draw_done = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        mesh_draw_done = 1'b0;
+        wait (command_ready);
+
         send_command(GFX_CMD_END_FRAME);
         repeat (2) @(posedge clk);
         if (swap_request)
@@ -146,6 +221,8 @@ module graphics_command_processor_tb;
         pipeline_idle = 1'b0;
 
         wait (frame_done);
+        if (frame_done_id != 32'h12345678)
+            $fatal(1, "displayed frame ID was not preserved");
         @(posedge clk);
 
         send_command(GFX_CMD_DRAW_TRIANGLE);
