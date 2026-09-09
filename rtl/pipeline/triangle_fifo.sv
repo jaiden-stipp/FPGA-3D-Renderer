@@ -22,17 +22,11 @@ module triangle_fifo #(
 
     localparam int PTR_BITS = (DEPTH <= 2) ? 1 : $clog2(DEPTH);
 
-    // Separate field memories avoid a Quartus 18.1 packed-struct inference bug.
-    logic signed [15:0] storage_x0 [0:DEPTH-1];
-    logic signed [15:0] storage_y0 [0:DEPTH-1];
-    logic signed [15:0] storage_z0 [0:DEPTH-1];
-    logic signed [15:0] storage_x1 [0:DEPTH-1];
-    logic signed [15:0] storage_y1 [0:DEPTH-1];
-    logic signed [15:0] storage_z1 [0:DEPTH-1];
-    logic signed [15:0] storage_x2 [0:DEPTH-1];
-    logic signed [15:0] storage_y2 [0:DEPTH-1];
-    logic signed [15:0] storage_z2 [0:DEPTH-1];
-    logic [7:0] storage_color [0:DEPTH-1];
+    logic [35:0] storage0 [0:DEPTH-1];
+    logic [35:0] storage1 [0:DEPTH-1];
+    logic [35:0] storage2 [0:DEPTH-1];
+    logic [35:0] storage3 [0:DEPTH-1];
+    logic [7:0] storage4 [0:DEPTH-1];
     logic [PTR_BITS-1:0] read_pointer;
     logic [PTR_BITS-1:0] write_pointer;
     logic [PTR_BITS:0] item_count;
@@ -48,16 +42,9 @@ module triangle_fifo #(
     always_comb begin
         out_data = '0;
         if (!empty) begin
-            out_data.x0 = storage_x0[read_pointer];
-            out_data.y0 = storage_y0[read_pointer];
-            out_data.z0 = storage_z0[read_pointer];
-            out_data.x1 = storage_x1[read_pointer];
-            out_data.y1 = storage_y1[read_pointer];
-            out_data.z1 = storage_z1[read_pointer];
-            out_data.x2 = storage_x2[read_pointer];
-            out_data.y2 = storage_y2[read_pointer];
-            out_data.z2 = storage_z2[read_pointer];
-            out_data.color = storage_color[read_pointer];
+            out_data = {storage4[read_pointer], storage3[read_pointer],
+                        storage2[read_pointer], storage1[read_pointer],
+                        storage0[read_pointer]};
         end
     end
 
@@ -71,16 +58,11 @@ module triangle_fifo #(
             item_count    <= '0;
         end else begin
             if (push) begin
-                storage_x0[write_pointer] <= in_data.x0;
-                storage_y0[write_pointer] <= in_data.y0;
-                storage_z0[write_pointer] <= in_data.z0;
-                storage_x1[write_pointer] <= in_data.x1;
-                storage_y1[write_pointer] <= in_data.y1;
-                storage_z1[write_pointer] <= in_data.z1;
-                storage_x2[write_pointer] <= in_data.x2;
-                storage_y2[write_pointer] <= in_data.y2;
-                storage_z2[write_pointer] <= in_data.z2;
-                storage_color[write_pointer] <= in_data.color;
+                storage0[write_pointer] <= in_data[35:0];
+                storage1[write_pointer] <= in_data[71:36];
+                storage2[write_pointer] <= in_data[107:72];
+                storage3[write_pointer] <= in_data[143:108];
+                storage4[write_pointer] <= in_data[151:144];
                 if (write_pointer == DEPTH - 1)
                     write_pointer <= '0;
                 else

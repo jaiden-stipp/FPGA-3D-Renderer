@@ -125,12 +125,12 @@ module graphics_command_processor_tb;
         @(negedge clk);
         reset = 1'b0;
 
-        command_data.argument = 24'h00005A;
+        `GFX_ARGUMENT(command_data) = 24'h00005A;
         send_command(GFX_CMD_SET_ROTATION);
         if (rotation_angle != 8'h5A)
             $fatal(1, "rotation command was not applied");
 
-        command_data.argument = 32'h07A1B2C3;
+        `GFX_ARGUMENT(command_data) = 32'h07A1B2C3;
         @(negedge clk);
         command_data.opcode = GFX_CMD_SET_PALETTE;
         command_valid = 1'b1;
@@ -141,9 +141,9 @@ module graphics_command_processor_tb;
         @(negedge clk);
         command_valid = 1'b0;
 
-        command_data.mesh_handle = 8'd2;
-        command_data.mesh_vertex_count = 16'd3;
-        command_data.mesh_triangle_count = 16'd1;
+        `GFX_MESH_HANDLE(command_data) = 8'd2;
+        `GFX_MESH_VERTEX_COUNT(command_data) = 16'd3;
+        `GFX_MESH_TRIANGLE_COUNT(command_data) = 16'd1;
         @(negedge clk);
         command_data.opcode = GFX_CMD_DEFINE_MESH;
         command_valid = 1'b1;
@@ -154,7 +154,7 @@ module graphics_command_processor_tb;
         @(negedge clk);
         command_valid = 1'b0;
 
-        command_data.argument = 32'h12345678;
+        `GFX_ARGUMENT(command_data) = 32'h12345678;
         fork
             send_command(GFX_CMD_BEGIN_FRAME);
             begin
@@ -166,9 +166,9 @@ module graphics_command_processor_tb;
             end
         join
 
-        command_data.triangle = '0;
-        command_data.triangle.x0 = 16'sh0123;
-        command_data.triangle.color = 8'h2F;
+        `GFX_TRIANGLE(command_data) = '0;
+        command_data.payload[151:136] = 16'sh0123;
+        command_data.payload[7:0] = 8'h2F;
         @(negedge clk);
         command_data.opcode = GFX_CMD_DRAW_TRIANGLE;
         command_valid = 1'b1;
@@ -187,11 +187,11 @@ module graphics_command_processor_tb;
         command_valid = 1'b0;
         triangle_ready = 1'b0;
 
-        command_data.mesh_handle = 8'd2;
-        command_data.model_matrix = '0;
-        command_data.model_matrix.m00 = 16'sh0100;
-        command_data.model_matrix.m11 = 16'sh0100;
-        command_data.model_matrix.m22 = 16'sh0100;
+        `GFX_DRAW_MESH_HANDLE(command_data) = 8'd2;
+        `GFX_MODEL_MATRIX(command_data) = '0;
+        command_data.payload[191:176] = 16'sh0100;
+        command_data.payload[111:96] = 16'sh0100;
+        command_data.payload[31:16] = 16'sh0100;
         send_command(GFX_CMD_DRAW_MESH);
         if (command_ready)
             $fatal(1, "processor accepted commands while indexed draw was active");

@@ -44,7 +44,7 @@ module indexed_mesh_store (
         READ_VERTEX0,
         READ_VERTEX1,
         READ_VERTEX2,
-        TRANSFORM_VERTEX,
+        TRANSFORM_COMPONENT,
         OUTPUT_TRIANGLE
     } mesh_state_t;
 
@@ -68,25 +68,20 @@ module indexed_mesh_store (
     logic [47:0] vertex1;
     logic [47:0] vertex2;
     logic [1:0] transform_vertex_number;
+    logic [1:0] transform_component_number;
     model_matrix_3x4_t active_matrix;
     logic signed [15:0] source_x;
     logic signed [15:0] source_y;
     logic signed [15:0] source_z;
-    logic signed [31:0] product_x0;
-    logic signed [31:0] product_x1;
-    logic signed [31:0] product_x2;
-    logic signed [31:0] product_y0;
-    logic signed [31:0] product_y1;
-    logic signed [31:0] product_y2;
-    logic signed [31:0] product_z0;
-    logic signed [31:0] product_z1;
-    logic signed [31:0] product_z2;
-    logic signed [33:0] sum_x;
-    logic signed [33:0] sum_y;
-    logic signed [33:0] sum_z;
-    logic signed [34:0] transformed_x;
-    logic signed [34:0] transformed_y;
-    logic signed [34:0] transformed_z;
+    logic signed [15:0] coefficient0;
+    logic signed [15:0] coefficient1;
+    logic signed [15:0] coefficient2;
+    logic signed [15:0] translation;
+    logic signed [31:0] product0;
+    logic signed [31:0] product1;
+    logic signed [31:0] product2;
+    logic signed [33:0] product_sum;
+    logic signed [34:0] transformed_component;
 
     function automatic logic signed [15:0] saturate_q8_8(
         input logic signed [34:0] value
@@ -139,27 +134,33 @@ module indexed_mesh_store (
             end
         endcase
 
-        product_x0 = source_x * active_matrix.m00;
-        product_x1 = source_y * active_matrix.m01;
-        product_x2 = source_z * active_matrix.m02;
-        product_y0 = source_x * active_matrix.m10;
-        product_y1 = source_y * active_matrix.m11;
-        product_y2 = source_z * active_matrix.m12;
-        product_z0 = source_x * active_matrix.m20;
-        product_z1 = source_y * active_matrix.m21;
-        product_z2 = source_z * active_matrix.m22;
-        sum_x = {{2{product_x0[31]}}, product_x0} +
-                {{2{product_x1[31]}}, product_x1} +
-                {{2{product_x2[31]}}, product_x2};
-        sum_y = {{2{product_y0[31]}}, product_y0} +
-                {{2{product_y1[31]}}, product_y1} +
-                {{2{product_y2[31]}}, product_y2};
-        sum_z = {{2{product_z0[31]}}, product_z0} +
-                {{2{product_z1[31]}}, product_z1} +
-                {{2{product_z2[31]}}, product_z2};
-        transformed_x = (sum_x >>> 8) + active_matrix.m03;
-        transformed_y = (sum_y >>> 8) + active_matrix.m13;
-        transformed_z = (sum_z >>> 8) + active_matrix.m23;
+        case (transform_component_number)
+            2'd0: begin
+                coefficient0 = active_matrix.m00;
+                coefficient1 = active_matrix.m01;
+                coefficient2 = active_matrix.m02;
+                translation = active_matrix.m03;
+            end
+            2'd1: begin
+                coefficient0 = active_matrix.m10;
+                coefficient1 = active_matrix.m11;
+                coefficient2 = active_matrix.m12;
+                translation = active_matrix.m13;
+            end
+            default: begin
+                coefficient0 = active_matrix.m20;
+                coefficient1 = active_matrix.m21;
+                coefficient2 = active_matrix.m22;
+                translation = active_matrix.m23;
+            end
+        endcase
+        product0 = source_x * coefficient0;
+        product1 = source_y * coefficient1;
+        product2 = source_z * coefficient2;
+        product_sum = {{2{product0[31]}}, product0} +
+                      {{2{product1[31]}}, product1} +
+                      {{2{product2[31]}}, product2};
+        transformed_component = (product_sum >>> 8) + translation;
     end
 
     assign draw_ready = state == IDLE;
@@ -199,6 +200,7 @@ module indexed_mesh_store (
             vertex1 <= '0;
             vertex2 <= '0;
             transform_vertex_number <= '0;
+            transform_component_number <= '0;
             active_matrix <= '0;
             triangle_data <= '0;
             triangle_valid <= 1'b0;
@@ -254,32 +256,32 @@ module indexed_mesh_store (
                 READ_VERTEX2: begin
                     vertex2 <= vertex_read_data;
                     transform_vertex_number <= '0;
-                    state <= TRANSFORM_VERTEX;
+                    transform_component_number <= '0;
+                    state <= TRANSFORM_COMPONENT;
                 end
-                TRANSFORM_VERTEX: begin
-                    case (transform_vertex_number)
-                        2'd0: begin
-                            triangle_data.x0 <= saturate_q8_8(transformed_x);
-                            triangle_data.y0 <= saturate_q8_8(transformed_y);
-                            triangle_data.z0 <= saturate_q8_8(transformed_z);
-                        end
-                        2'd1: begin
-                            triangle_data.x1 <= saturate_q8_8(transformed_x);
-                            triangle_data.y1 <= saturate_q8_8(transformed_y);
-                            triangle_data.z1 <= saturate_q8_8(transformed_z);
-                        end
-                        default: begin
-                            triangle_data.x2 <= saturate_q8_8(transformed_x);
-                            triangle_data.y2 <= saturate_q8_8(transformed_y);
-                            triangle_data.z2 <= saturate_q8_8(transformed_z);
-                            triangle_data.color <= index_record[31:24];
-                        end
+                TRANSFORM_COMPONENT: begin
+                    case ({transform_vertex_number, transform_component_number})
+                        4'b0000: triangle_data.x0 <= saturate_q8_8(transformed_component);
+                        4'b0001: triangle_data.y0 <= saturate_q8_8(transformed_component);
+                        4'b0010: triangle_data.z0 <= saturate_q8_8(transformed_component);
+                        4'b0100: triangle_data.x1 <= saturate_q8_8(transformed_component);
+                        4'b0101: triangle_data.y1 <= saturate_q8_8(transformed_component);
+                        4'b0110: triangle_data.z1 <= saturate_q8_8(transformed_component);
+                        4'b1000: triangle_data.x2 <= saturate_q8_8(transformed_component);
+                        4'b1001: triangle_data.y2 <= saturate_q8_8(transformed_component);
+                        default: triangle_data.z2 <= saturate_q8_8(transformed_component);
                     endcase
-                    if (transform_vertex_number == 2'd2) begin
-                        triangle_valid <= 1'b1;
-                        state <= OUTPUT_TRIANGLE;
+                    if (transform_component_number == 2'd2) begin
+                        transform_component_number <= '0;
+                        if (transform_vertex_number == 2'd2) begin
+                            triangle_data.color <= index_record[31:24];
+                            triangle_valid <= 1'b1;
+                            state <= OUTPUT_TRIANGLE;
+                        end else begin
+                            transform_vertex_number <= transform_vertex_number + 1'b1;
+                        end
                     end else begin
-                        transform_vertex_number <= transform_vertex_number + 1'b1;
+                        transform_component_number <= transform_component_number + 1'b1;
                     end
                 end
                 OUTPUT_TRIANGLE: begin

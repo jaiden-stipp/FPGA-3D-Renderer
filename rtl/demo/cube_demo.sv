@@ -51,15 +51,15 @@ module cube_demo (
         case (state)
             SET_ROTATION: begin
                 command_data.opcode = GFX_CMD_SET_ROTATION;
-                command_data.argument[7:0] = angle;
+                command_data.payload[7:0] = angle;
             end
             BEGIN_FRAME: begin
                 command_data.opcode = GFX_CMD_BEGIN_FRAME;
-                command_data.argument = frame_id;
+                `GFX_ARGUMENT(command_data) = frame_id;
             end
             FEED: begin
                 command_data.opcode = GFX_CMD_DRAW_TRIANGLE;
-                command_data.triangle = triangle_data;
+                `GFX_TRIANGLE(command_data) = triangle_data;
             end
             END_FRAME: command_data.opcode = GFX_CMD_END_FRAME;
             default: command_valid = 1'b0;

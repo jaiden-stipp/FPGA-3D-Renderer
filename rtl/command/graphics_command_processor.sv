@@ -79,7 +79,7 @@ module graphics_command_processor (
             endcase
         end
 
-        triangle_data = command_data.triangle;
+        triangle_data = `GFX_TRIANGLE(command_data);
         triangle_valid = (state == FRAME_ACTIVE) && command_valid &&
                          (command_data.opcode == GFX_CMD_DRAW_TRIANGLE);
         mesh_define_write = (state == IDLE) && command_valid && command_ready &&
@@ -88,24 +88,27 @@ module graphics_command_processor (
                             (command_data.opcode == GFX_CMD_UPLOAD_VERTEX);
         mesh_index_write = (state == IDLE) && command_valid && command_ready &&
                            (command_data.opcode == GFX_CMD_UPLOAD_INDEX);
-        mesh_handle = command_data.mesh_handle;
-        mesh_element = command_data.mesh_element;
-        mesh_vertex_count = command_data.mesh_vertex_count;
-        mesh_triangle_count = command_data.mesh_triangle_count;
-        mesh_index0 = command_data.mesh_index0;
-        mesh_index1 = command_data.mesh_index1;
-        mesh_index2 = command_data.mesh_index2;
-        mesh_color = command_data.mesh_color;
-        mesh_vertex_x = command_data.vertex_x;
-        mesh_vertex_y = command_data.vertex_y;
-        mesh_vertex_z = command_data.vertex_z;
+        if (command_data.opcode == GFX_CMD_DRAW_MESH)
+            mesh_handle = `GFX_DRAW_MESH_HANDLE(command_data);
+        else
+            mesh_handle = `GFX_MESH_HANDLE(command_data);
+        mesh_element = `GFX_MESH_ELEMENT(command_data);
+        mesh_vertex_count = `GFX_MESH_VERTEX_COUNT(command_data);
+        mesh_triangle_count = `GFX_MESH_TRIANGLE_COUNT(command_data);
+        mesh_index0 = `GFX_MESH_INDEX0(command_data);
+        mesh_index1 = `GFX_MESH_INDEX1(command_data);
+        mesh_index2 = `GFX_MESH_INDEX2(command_data);
+        mesh_color = `GFX_MESH_COLOR(command_data);
+        mesh_vertex_x = `GFX_VERTEX_X(command_data);
+        mesh_vertex_y = `GFX_VERTEX_Y(command_data);
+        mesh_vertex_z = `GFX_VERTEX_Z(command_data);
         mesh_draw_valid = (state == FRAME_ACTIVE) && command_valid &&
                           (command_data.opcode == GFX_CMD_DRAW_MESH);
-        mesh_draw_matrix = command_data.model_matrix;
+        mesh_draw_matrix = `GFX_MODEL_MATRIX(command_data);
         palette_write = (state == IDLE) && command_valid && command_ready &&
                         (command_data.opcode == GFX_CMD_SET_PALETTE);
-        palette_address = command_data.argument[31:24];
-        palette_write_rgb = command_data.argument[23:0];
+        palette_address = command_data.payload[31:24];
+        palette_write_rgb = command_data.payload[23:0];
         clear_request = (state == CLEAR_START);
         swap_request = (state == SWAP_START);
     end
@@ -134,7 +137,7 @@ module graphics_command_processor (
                     if (command_valid && command_ready) begin
                         case (command_data.opcode)
                             GFX_CMD_SET_ROTATION:
-                                rotation_angle <= command_data.argument[7:0];
+                                rotation_angle <= command_data.payload[7:0];
                             GFX_CMD_SET_PALETTE:
                                 state <= IDLE;
                             GFX_CMD_DEFINE_MESH,
@@ -144,7 +147,7 @@ module graphics_command_processor (
                                     command_error <= 1'b1;
                             end
                             GFX_CMD_BEGIN_FRAME: begin
-                                active_frame_id <= command_data.argument;
+                                active_frame_id <= `GFX_ARGUMENT(command_data);
                                 state <= CLEAR_START;
                             end
                             default:

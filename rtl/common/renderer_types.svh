@@ -56,20 +56,23 @@ typedef enum logic [3:0] {
 
 typedef struct packed {
     graphics_command_opcode_t opcode;
-    triangle_3d_t triangle;
-    logic [31:0] argument;
-    logic [7:0] mesh_handle;
-    logic [15:0] mesh_element;
-    logic [15:0] mesh_vertex_count;
-    logic [15:0] mesh_triangle_count;
-    logic [7:0] mesh_index0;
-    logic [7:0] mesh_index1;
-    logic [7:0] mesh_index2;
-    logic [7:0] mesh_color;
-    logic signed [15:0] vertex_x;
-    logic signed [15:0] vertex_y;
-    logic signed [15:0] vertex_z;
-    model_matrix_3x4_t model_matrix;
+    logic [199:0] payload;
 } graphics_command_t;
+
+`define GFX_ARGUMENT(command) command.payload[31:0]
+`define GFX_TRIANGLE(command) command.payload[151:0]
+`define GFX_MESH_HANDLE(command) command.payload[135:128]
+`define GFX_MESH_ELEMENT(command) command.payload[127:112]
+`define GFX_MESH_VERTEX_COUNT(command) command.payload[111:96]
+`define GFX_MESH_TRIANGLE_COUNT(command) command.payload[95:80]
+`define GFX_MESH_INDEX0(command) command.payload[79:72]
+`define GFX_MESH_INDEX1(command) command.payload[71:64]
+`define GFX_MESH_INDEX2(command) command.payload[63:56]
+`define GFX_MESH_COLOR(command) command.payload[55:48]
+`define GFX_VERTEX_X(command) command.payload[47:32]
+`define GFX_VERTEX_Y(command) command.payload[31:16]
+`define GFX_VERTEX_Z(command) command.payload[15:0]
+`define GFX_DRAW_MESH_HANDLE(command) command.payload[199:192]
+`define GFX_MODEL_MATRIX(command) command.payload[191:0]
 
 `endif

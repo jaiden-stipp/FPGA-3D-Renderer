@@ -9,7 +9,7 @@ An FPGA-based 3D triangle renderer written in SystemVerilog. The hardware draws 
 
 - General ready/valid command interface for frame setup and triangle submission
 - Versioned binary command stream with CRC error detection
-- C++17 library for meshes, transforms, palettes, and command generation
+- C++17 library for meshes, transforms, palettes, bulk uploads, and command generation
 - Sixteen persistent indexed-mesh handles with on-chip vertex and index RAM
 - Per-draw fixed-point 3 x 4 model matrices
 - Reliable, sequenced UDP input through the DE2-115 ENET0 port
@@ -57,11 +57,11 @@ Indexed back buffer
 Palette lookup and double-buffered VGA output
 ```
 
-The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. It acknowledges each packet with the submission ID, sequence number, result, and free FIFO space. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. The command processor handles palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA sends the displayed frame ID back to the computer. `SW[0]` selects Ethernet commands or the built-in demo.
+The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. It acknowledges each packet with the submission ID, sequence number, result, and free FIFO space. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. Bulk mesh records are buffered in one M9K and replayed into the same command path used by the original single-record opcodes. The command processor handles palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA sends the displayed frame ID back to the computer. `SW[0]` selects Ethernet commands or the built-in demo.
 
 Each draw command contains three 3D vertices and one 8-bit color index. The transform stage rotates the vertices, applies the camera view, and clips geometry before and after projection. Clipped polygons are split back into triangles before rasterization.
 
-Indexed meshes can be uploaded once and reused. Each indexed draw fetches three vertices from on-chip RAM, applies its own Q8.8 3 x 4 model matrix, and sends the resulting triangle through the same graphics pipeline. The current fixed allocation supports 16 handles, 128 vertices per handle, and 256 triangles per handle.
+Indexed meshes can be uploaded once and reused. Each indexed draw fetches three vertices from on-chip RAM, applies its own Q8.8 3 x 4 model matrix, and sends the resulting triangle through the same graphics pipeline. Three shared multipliers process the matrix one row at a time instead of keeping nine multipliers active in parallel. The current fixed allocation supports 16 handles, 128 vertices per handle, and 256 triangles per handle.
 
 The rasterizer steps through each triangle's bounding box. Edge equations find covered pixels, while reciprocal depth is interpolated across the triangle. A pixel is written only when its depth is closer than the value in the Z buffer.
 ## Memory
@@ -73,7 +73,7 @@ The rasterizer steps through each triangle's bounding box. Edge equations find c
 - Indexed vertex store: 98,304 bits
 - Indexed triangle store: 118,784 fitted bits
 
-The color pages, Z buffer, vertex store, and triangle store use Intel `altsyncram` M9K block RAM. Quartus reports 2,092,544 total memory bits, including the palette, network FIFO, and other inferred storage.
+The color pages, Z buffer, vertex store, and triangle store use Intel `altsyncram` M9K block RAM. Quartus reports 2,094,584 total memory bits, including the palette, network FIFO, bulk upload buffer, and other inferred storage.
 
 ## Debugging Process
 <img width="4032" height="3024" alt="image" src="https://github.com/user-attachments/assets/6147bdff-53cc-4008-98f4-3e645eb5851b" />
@@ -83,11 +83,23 @@ The scene was rendering, but parts of several frames appeared on the screen at t
 <img width="5712" height="4284" alt="image" src="https://github.com/user-attachments/assets/b895ed0b-052d-4e86-b7b2-fdbfb43ba842" />
 The vertices, projection, clipping, and depth testing were now working, but the cube looked as if it were being viewed from the inside. The backface-culling test was rejecting the front faces instead of the back faces. Screen projection reverses the Y axis, which also changes the winding direction of each triangle. Reversing the signed-area test fixed which faces were removed, while the Z-buffer handled the remaining overlap.
 
+### Other Difficult Parts
+
+Clipping was one of the hardest geometry problems. Rejecting every triangle that crossed the near plane made objects disappear as they approached the camera, while clamping projected vertices distorted triangles at the screen edges. The final pipeline computes fixed-point intersections with the near plane and viewport boundaries, builds the visible polygon, and splits it into replacement triangles. The generated vertices keep their reciprocal depth so the Z test remains correct after clipping.
+
+The Z-buffer also required more than adding another RAM. Intel block RAM has registered read latency, so a pixel cannot be compared and written in one simple combinational step. The rasterizer now waits for the stored depth, compares it with the interpolated `1/z` value, and updates the depth and color memories only when the new pixel is closer. The clear, render, and display operations are sequenced so they do not compete for the same memory ports.
+
+Inferring memories correctly was another hardware-specific challenge. The first vertex-fetch implementation used an asynchronous array read, which caused Quartus to expand the vertex store into about 179,000 logic cells instead of block RAM. The fetch stage was redesigned around synchronous read addresses, registered outputs, and explicit wait states. The bulk command decoder uses the same pattern, reading one buffered byte at a time instead of creating hundreds of parallel reads. Quartus maps these stores into M9K RAM, and the complete design fits in 11,276 logic elements while meeting 50 MHz timing.
+
+Reliable Ethernet transfer required handling more than raw UDP reception. Large command streams are divided into numbered packets, moved from the 25 MHz MII clock domain into the 50 MHz renderer domain, checked for missing or duplicate sequences, and acknowledged with FIFO space and error flags. Submission IDs track packet delivery, while separate frame IDs confirm that a completed frame was actually swapped onto the VGA display. The C++ client retries lost packets and does not begin the next frame until display completion arrives.
+
+Imported OBJ files created a different resource problem. The Suzanne model I tested has 2,012 vertices and 3,936 triangles, which originally required 23 mesh handles even though the FPGA provides 16. The software now centers and scales the model, groups nearby vertices, removes collapsed and duplicate faces, and divides the result into legal 128-vertex and 256-triangle chunks. Suzanne is reduced to 1,125 vertices and 2,274 triangles and fits into 14 handles, while small models are left unchanged.
+
 ## Hardware
 
 The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. VGA output runs at 25 MHz
 
-The current build uses 11,160 logic elements, 5,756 registers, 2,092,544 memory bits, and 72 embedded 9-bit multiplier elements. It meets all setup and hold constraints at 50 MHz.
+The current build uses 11,276 logic elements, 5,487 registers, 2,094,584 memory bits, 264 M9K blocks, and 60 embedded 9-bit multiplier elements. Its worst slow-corner setup slack is 1.588 ns, and it meets all setup and hold constraints at 50 MHz.
 
 
 
@@ -155,3 +167,5 @@ ctest --test-dir build -C Release
 ```
 
 Run `renderer_example` to generate a complete cube command stream. Run `renderer_udp_demo` to split and send that scene to `192.168.7.2:4000`, retry packets when needed, and wait for the displayed-frame response. `renderer_scene_tests` adds palette, depth, clipping, multi-packet stress, and orbit-animation tests for the VGA display. See [the command protocol](docs/command_protocol.md) and [the Ethernet setup guide](docs/ethernet.md) for the full path.
+
+`renderer_model_viewer` loads Wavefront OBJ files, triangulates polygon faces, normalizes their size, and divides them across hardware mesh handles. It displays one to eight transformed instances, using one by default for large models and three for small models. Models that are too large are reduced with vertex clustering until they fit the 16-handle mesh store. See [the model viewer guide](docs/model_viewer.md).

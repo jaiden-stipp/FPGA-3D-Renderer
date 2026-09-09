@@ -25,8 +25,8 @@ module transform_3d_pipeline #(
     localparam int CENTER_X = SCREEN_WIDTH / 2;
     localparam int CENTER_Y = SCREEN_HEIGHT / 2;
     localparam int MAX_VERTICES = 8;
-    localparam logic signed [16:0] RIGHT_EDGE = SCREEN_WIDTH - 1;
-    localparam logic signed [16:0] BOTTOM_EDGE = SCREEN_HEIGHT - 1;
+    localparam logic signed [16:0] RIGHT_EDGE = 17'(SCREEN_WIDTH - 1);
+    localparam logic signed [16:0] BOTTOM_EDGE = 17'(SCREEN_HEIGHT - 1);
 
     typedef enum logic [3:0] {
         IDLE,
@@ -48,7 +48,7 @@ module transform_3d_pipeline #(
     transform_state_t state;
     triangle_3d_t active_triangle;
     logic [7:0] active_rotation_angle;
-    logic [1:0] vertex_number;
+    logic [2:0] vertex_number;
 
     logic signed [15:0] polygon_x [0:MAX_VERTICES-1];
     logic signed [15:0] polygon_y [0:MAX_VERTICES-1];
@@ -93,20 +93,21 @@ module transform_3d_pipeline #(
     logic edge_start_inside;
     logic edge_end_inside;
 
-    logic clip_divider_start;
-    logic clip_divider_busy;
-    logic clip_divider_done;
     logic signed [31:0] clip_dividend;
     logic signed [17:0] clip_divisor;
-    logic signed [31:0] clip_quotient;
     logic signed [15:0] intersection_x;
     logic signed [15:0] intersection_y;
     logic signed [15:0] intersection_z;
 
-    logic reciprocal_start;
-    logic reciprocal_busy;
-    logic reciprocal_done;
-    logic signed [31:0] reciprocal_quotient;
+    logic divider_start;
+    logic divider_busy;
+    logic divider_done;
+    logic signed [31:0] divider_numerator;
+    logic signed [17:0] divider_denominator;
+    logic signed [31:0] divider_quotient;
+    logic [7:0] yaw_cosine_angle;
+    logic [8:0] pitch_cosine_sum;
+    logic [7:0] pitch_cosine_angle;
 
     logic signed [33:0] fan_area;
 
@@ -237,37 +238,26 @@ module transform_3d_pipeline #(
 
     iterative_signed_divider #(
         .NUMERATOR_WIDTH(32),
-        .DENOMINATOR_WIDTH(16)
-    ) reciprocal_divider (
-        .clk(clk),
-        .reset(reset),
-        .start(reciprocal_start),
-        .numerator(32'sd65536),
-        .denominator(polygon_z[project_index]),
-        .busy(reciprocal_busy),
-        .done(reciprocal_done),
-        .quotient(reciprocal_quotient)
-    );
-
-    iterative_signed_divider #(
-        .NUMERATOR_WIDTH(32),
         .DENOMINATOR_WIDTH(18)
-    ) clip_divider (
+    ) shared_divider (
         .clk(clk),
         .reset(reset),
-        .start(clip_divider_start),
-        .numerator(clip_dividend),
-        .denominator(clip_divisor),
-        .busy(clip_divider_busy),
-        .done(clip_divider_done),
-        .quotient(clip_quotient)
+        .start(divider_start),
+        .numerator(divider_numerator),
+        .denominator(divider_denominator),
+        .busy(divider_busy),
+        .done(divider_done),
+        .quotient(divider_quotient)
     );
 
     always_comb begin
         sin_y = sine_q15(active_rotation_angle);
-        cos_y = sine_q15(active_rotation_angle + 8'd64);
+        yaw_cosine_angle = active_rotation_angle + 8'd64;
+        cos_y = sine_q15(yaw_cosine_angle);
         sin_pitch = sine_q15(VIEW_PITCH_ANGLE);
-        cos_pitch = sine_q15(VIEW_PITCH_ANGLE + 8'd64);
+        pitch_cosine_sum = {1'b0, VIEW_PITCH_ANGLE} + 9'd64;
+        pitch_cosine_angle = pitch_cosine_sum[7:0];
+        cos_pitch = sine_q15(pitch_cosine_angle);
 
         case (vertex_number)
             2'd0: begin
@@ -353,11 +343,11 @@ module transform_3d_pipeline #(
             $signed({edge_start_plane[16], edge_start_plane}) -
             $signed({edge_end_plane[16], edge_end_plane});
         intersection_x = interpolate_value(edge_start_x, edge_end_x,
-                                           clip_quotient[16:0]);
+            divider_quotient[16:0]);
         intersection_y = interpolate_value(edge_start_y, edge_end_y,
-                                           clip_quotient[16:0]);
+            divider_quotient[16:0]);
         intersection_z = interpolate_value(edge_start_z, edge_end_z,
-                                           clip_quotient[16:0]);
+            divider_quotient[16:0]);
 
         if (clip_is_near) begin
             intersection_z = NEAR_Z_Q8_8;
@@ -380,9 +370,21 @@ module transform_3d_pipeline #(
                 polygon_x[fan_index + 1'b1], polygon_y[fan_index + 1'b1]);
         end
 
+        divider_start = state == CLIP_INTERSECT_START ||
+                        (state == PROJECT_START && project_index != polygon_count);
+        if (state == CLIP_INTERSECT_START || state == CLIP_INTERSECT_WAIT) begin
+            divider_numerator = clip_dividend;
+            divider_denominator = clip_divisor;
+        end else begin
+            divider_numerator = 32'sd65536;
+            if (project_index < MAX_VERTICES)
+                divider_denominator = {{2{polygon_z[project_index][15]}},
+                                       polygon_z[project_index]};
+            else
+                divider_denominator = 18'sd1;
+        end
         in_ready = (state == IDLE) && !out_valid && !reset;
-        busy = (state != IDLE) || out_valid || reciprocal_busy ||
-               clip_divider_busy;
+        busy = (state != IDLE) || out_valid || divider_busy;
     end
 
     always_ff @(posedge clk or posedge reset) begin
@@ -400,20 +402,15 @@ module transform_3d_pipeline #(
             clip_append_end <= 1'b0;
             project_index <= '0;
             fan_index <= '0;
-            reciprocal_start <= 1'b0;
-            clip_divider_start <= 1'b0;
             out_data <= '0;
             out_valid <= 1'b0;
         end else begin
-            reciprocal_start <= 1'b0;
-            clip_divider_start <= 1'b0;
-
             case (state)
                 IDLE: begin
                     if (in_valid && in_ready) begin
                         active_triangle <= in_data;
                         active_rotation_angle <= rotation_angle;
-                        vertex_number <= 2'd0;
+                        vertex_number <= 3'd0;
                         state <= ROTATE;
                     end
                 end
@@ -423,8 +420,8 @@ module transform_3d_pipeline #(
                     polygon_y[vertex_number] <= current_y;
                     polygon_z[vertex_number] <= yaw_z_result;
 
-                    if (vertex_number == 2'd2) begin
-                        vertex_number <= 2'd0;
+                    if (vertex_number == 3'd2) begin
+                        vertex_number <= 3'd0;
                         state <= VIEW_PITCH;
                     end else begin
                         vertex_number <= vertex_number + 1'b1;
@@ -435,7 +432,7 @@ module transform_3d_pipeline #(
                     polygon_y[vertex_number] <= view_y_result;
                     polygon_z[vertex_number] <= view_depth_result;
 
-                    if (vertex_number == 2'd2) begin
+                    if (vertex_number == 3'd2) begin
                         polygon_count <= 4'd3;
                         clip_is_near <= 1'b1;
                         state <= CLIP_SETUP;
@@ -466,12 +463,11 @@ module transform_3d_pipeline #(
                 end
 
                 CLIP_INTERSECT_START: begin
-                    clip_divider_start <= 1'b1;
                     state <= CLIP_INTERSECT_WAIT;
                 end
 
                 CLIP_INTERSECT_WAIT: begin
-                    if (clip_divider_done) begin
+                    if (divider_done) begin
                         clipped_x[clipped_count] <= intersection_x;
                         clipped_y[clipped_count] <= intersection_y;
                         clipped_z[clipped_count] <= intersection_z;
@@ -532,20 +528,19 @@ module transform_3d_pipeline #(
                         screen_plane <= '0;
                         state <= CLIP_SETUP;
                     end else begin
-                        reciprocal_start <= 1'b1;
                         state <= PROJECT_WAIT;
                     end
                 end
 
                 PROJECT_WAIT: begin
-                    if (reciprocal_done) begin
+                    if (divider_done) begin
                         polygon_x[project_index] <=
                             project_x(polygon_x[project_index],
-                                      reciprocal_quotient[15:0]);
+                                      divider_quotient[15:0]);
                         polygon_y[project_index] <=
                             project_y(polygon_y[project_index],
-                                      reciprocal_quotient[15:0]);
-                        polygon_z[project_index] <= reciprocal_quotient[15:0];
+                                      divider_quotient[15:0]);
+                        polygon_z[project_index] <= divider_quotient[15:0];
                         project_index <= project_index + 1'b1;
                         state <= PROJECT_START;
                     end

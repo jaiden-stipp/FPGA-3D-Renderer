@@ -3,6 +3,7 @@
 set_global_assignment -name FAMILY "Cyclone IV E"
 set_global_assignment -name DEVICE EP4CE115F29C7
 set_global_assignment -name TOP_LEVEL_ENTITY de2_115_top
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 8
 set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.0
 set_global_assignment -name PROJECT_CREATION_TIME_DATE "12:47:05  SEPTEMBER 02, 2026"
 set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
@@ -99,6 +100,16 @@ set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_DATA[3]
 set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_EN
 set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_TX_ER
 set_instance_assignment -name IO_STANDARD "2.5 V" -to ENET0_RST_N
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to ENET0_TX_DATA[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to ENET0_TX_EN
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to ENET0_TX_ER
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to ENET0_RST_N
+set_instance_assignment -name SLEW_RATE 1 -to ENET0_TX_DATA[*]
+set_instance_assignment -name SLEW_RATE 1 -to ENET0_TX_EN
+set_instance_assignment -name SLEW_RATE 1 -to ENET0_TX_ER
+set_instance_assignment -name SLEW_RATE 1 -to ENET0_RST_N
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to LEDG[*]
+set_instance_assignment -name SLEW_RATE 1 -to LEDG[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ENET0_LINK100
 
 # ADV7123 VGA DAC: eight bits per color channel.

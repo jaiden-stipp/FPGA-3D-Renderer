@@ -201,6 +201,7 @@ module vga_controller_640x480 #(
 
     function automatic logic [11:0] fps_digits(input logic [7:0] value);
         logic [7:0] remainder;
+        logic [7:0] units;
         logic [3:0] hundreds;
         logic [3:0] tens;
         begin
@@ -237,8 +238,8 @@ module vga_controller_640x480 #(
                 tens = 4'd0;
             end
 
-            fps_digits = {hundreds, tens,
-                          remainder - ((tens << 3) + (tens << 1))};
+            units = remainder - ((tens << 3) + (tens << 1));
+            fps_digits = {hundreds, tens, units[3:0]};
         end
     endfunction
 
@@ -253,10 +254,12 @@ module vga_controller_640x480 #(
         logic [2:0] glyph_column;
         logic [4:0] active_glyph_row;
         logic [11:0] digits;
+        logic [9:0] column_offset;
         begin
             fps_overlay_pixel = 1'b0;
             glyph = 4'd0;
             glyph_column = 3'd0;
+            column_offset = 10'd0;
             digits = fps_digits(value);
 
             if ((x >= 10'd8) && (x < 10'd78) &&
@@ -266,25 +269,26 @@ module vga_controller_640x480 #(
 
                 if (x_offset < 10'd10) begin
                     glyph = 4'd10;
-                    glyph_column = x_offset[3:1];
+                    column_offset = x_offset;
                 end else if ((x_offset >= 10'd12) && (x_offset < 10'd22)) begin
                     glyph = 4'd11;
-                    glyph_column = (x_offset - 10'd12) >> 1;
+                    column_offset = x_offset - 10'd12;
                 end else if ((x_offset >= 10'd24) && (x_offset < 10'd34)) begin
                     glyph = 4'd12;
-                    glyph_column = (x_offset - 10'd24) >> 1;
+                    column_offset = x_offset - 10'd24;
                 end else if ((x_offset >= 10'd36) && (x_offset < 10'd46)) begin
                     glyph = digits[11:8];
-                    glyph_column = (x_offset - 10'd36) >> 1;
+                    column_offset = x_offset - 10'd36;
                 end else if ((x_offset >= 10'd48) && (x_offset < 10'd58)) begin
                     glyph = digits[7:4];
-                    glyph_column = (x_offset - 10'd48) >> 1;
+                    column_offset = x_offset - 10'd48;
                 end else if ((x_offset >= 10'd60) && (x_offset < 10'd70)) begin
                     glyph = digits[3:0];
-                    glyph_column = (x_offset - 10'd60) >> 1;
+                    column_offset = x_offset - 10'd60;
                 end else begin
                     glyph = 4'd15;
                 end
+                glyph_column = column_offset[3:1];
 
                 active_glyph_row = glyph_row(glyph, y_offset[3:1]);
                 if (glyph != 4'd15)

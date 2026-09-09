@@ -30,6 +30,8 @@ The CRC starts at `FFFF` and uses polynomial `1021`. The decoder checks each com
 | `06` | Upload vertex | Handle, vertex number, signed Q8.8 X, Y, Z |
 | `07` | Upload index | Handle, triangle number, three vertex indices, palette index |
 | `08` | Draw mesh | Handle and a row-major Q8.8 3 x 4 model matrix |
+| `09` | Upload vertices | Handle, first vertex number, count, then packed vertex records |
+| `0A` | Upload indices | Handle, first triangle number, count, then packed index records |
 
 `Begin frame` stores the frame ID and clears the back color buffer and Z-buffer. Draw commands then enter the ready/valid graphics pipeline. `End frame` waits for all triangles to finish and swaps buffers during vertical blanking. The same frame ID is returned in the displayed-frame UDP status packet.
 
@@ -44,6 +46,10 @@ The mesh store provides 16 handles. Each handle reserves space for up to 128 ver
 `Upload vertex` has an eight-byte payload: handle, 8-bit vertex number, then signed Q8.8 X, Y, and Z values.
 
 `Upload index` has a seven-byte payload: handle, 16-bit triangle number, three 8-bit vertex indices, and one palette index. Color remains flat per triangle.
+
+The C++ library normally uses the two bulk upload commands to reduce command overhead. `Upload vertices` starts with a handle, an 8-bit first vertex number, and an 8-bit count. Each following record contains signed Q8.8 X, Y, and Z values, for six bytes per vertex. A frame holds at most 42 records because the command payload is limited to 255 bytes.
+
+`Upload indices` starts with a handle, a 16-bit first triangle number, and an 8-bit count. Each four-byte record contains three vertex indices and one palette index. A frame holds at most 62 records. The decoder checks the CRC and the complete range before replaying either bulk command into the mesh store. The single-record opcodes remain supported for compatibility.
 
 `Draw mesh` has a 25-byte payload. The first byte is the handle. The remaining 24 bytes contain twelve signed Q8.8 matrix values in row-major order:
 

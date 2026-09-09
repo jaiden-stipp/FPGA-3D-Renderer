@@ -53,7 +53,7 @@ module ethernet_command_receiver_tb;
     always @(posedge system_clk) begin
         if (command_valid && command_ready) begin
             if (command_data.opcode != GFX_CMD_SET_ROTATION ||
-                command_data.argument[7:0] != 8'h5A)
+                command_data.payload[7:0] != 8'h5A)
                 $fatal(1, "decoded graphics command is incorrect");
             command_count = command_count + 1;
         end

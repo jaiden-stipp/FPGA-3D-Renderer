@@ -19,7 +19,9 @@ enum class Opcode : std::uint8_t {
     DefineMesh = 5,
     UploadVertex = 6,
     UploadIndex = 7,
-    DrawMesh = 8
+    DrawMesh = 8,
+    UploadVertices = 9,
+    UploadIndices = 10
 };
 
 enum class StatusEvent : std::uint8_t {
@@ -84,6 +86,7 @@ Mat4 operator*(const Mat4& left, const Mat4& right);
 
 class Mesh {
 public:
+    void reserve(std::size_t triangleCount);
     void addTriangle(const Triangle& triangle);
     const std::vector<Triangle>& triangles() const;
 

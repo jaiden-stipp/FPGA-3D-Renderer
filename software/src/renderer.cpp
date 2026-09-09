@@ -1,9 +1,11 @@
 #include "fpga_renderer/renderer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace fpga_renderer {
 
@@ -15,19 +17,37 @@ void appendFixed(std::vector<std::uint8_t>& output, float value) {
     output.push_back(static_cast<std::uint8_t>(fixed));
 }
 
-bool sameVertex(const Vec3& left, const Vec3& right) {
-    return left.x == right.x && left.y == right.y && left.z == right.z;
+struct FixedVertex {
+    std::int16_t x;
+    std::int16_t y;
+    std::int16_t z;
+};
+
+std::uint64_t vertexKey(const FixedVertex& vertex) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint16_t>(vertex.x)) << 32) |
+           (static_cast<std::uint64_t>(static_cast<std::uint16_t>(vertex.y)) << 16) |
+           static_cast<std::uint16_t>(vertex.z);
 }
 
-std::uint8_t findVertex(std::vector<Vec3>& vertices, const Vec3& vertex) {
-    for (std::size_t index = 0; index < vertices.size(); ++index) {
-        if (sameVertex(vertices[index], vertex))
-            return static_cast<std::uint8_t>(index);
-    }
+std::uint8_t findVertex(std::vector<FixedVertex>& vertices,
+                        std::unordered_map<std::uint64_t, std::uint8_t>& indices,
+                        const Vec3& vertex) {
+    const FixedVertex fixed{toQ8_8(vertex.x), toQ8_8(vertex.y), toQ8_8(vertex.z)};
+    const auto found = indices.find(vertexKey(fixed));
+    if (found != indices.end())
+        return found->second;
     if (vertices.size() >= 128)
         throw std::length_error("mesh exceeds 128 unique vertices");
-    vertices.push_back(vertex);
-    return static_cast<std::uint8_t>(vertices.size() - 1);
+    const auto index = static_cast<std::uint8_t>(vertices.size());
+    vertices.push_back(fixed);
+    indices.emplace(vertexKey(fixed), index);
+    return index;
+}
+
+void appendFixed(std::vector<std::uint8_t>& output, std::int16_t value) {
+    const auto fixed = static_cast<std::uint16_t>(value);
+    output.push_back(static_cast<std::uint8_t>(fixed >> 8));
+    output.push_back(static_cast<std::uint8_t>(fixed));
 }
 
 }
@@ -117,6 +137,10 @@ Mat4 operator*(const Mat4& left, const Mat4& right) {
     return result;
 }
 
+void Mesh::reserve(std::size_t triangleCount) {
+    triangles_.reserve(triangleCount);
+}
+
 void Mesh::addTriangle(const Triangle& triangle) {
     triangles_.push_back(triangle);
 }
@@ -160,13 +184,17 @@ void CommandStream::uploadMesh(std::uint8_t handle, const Mesh& mesh) {
         std::uint8_t index2;
         std::uint8_t color;
     };
-    std::vector<Vec3> vertices;
+    std::vector<FixedVertex> vertices;
+    std::unordered_map<std::uint64_t, std::uint8_t> vertexIndices;
     std::vector<IndexedTriangle> triangles;
+    vertices.reserve(128);
+    vertexIndices.reserve(128);
     triangles.reserve(mesh.triangles().size());
     for (const Triangle& triangle : mesh.triangles()) {
-        triangles.push_back({findVertex(vertices, triangle.v0),
-                             findVertex(vertices, triangle.v1),
-                             findVertex(vertices, triangle.v2), triangle.color});
+        triangles.push_back({findVertex(vertices, vertexIndices, triangle.v0),
+                             findVertex(vertices, vertexIndices, triangle.v1),
+                             findVertex(vertices, vertexIndices, triangle.v2),
+                             triangle.color});
     }
 
     append(Opcode::DefineMesh, {
@@ -176,23 +204,35 @@ void CommandStream::uploadMesh(std::uint8_t handle, const Mesh& mesh) {
         static_cast<std::uint8_t>(triangles.size() >> 8),
         static_cast<std::uint8_t>(triangles.size())
     });
-    for (std::size_t index = 0; index < vertices.size(); ++index) {
-        std::vector<std::uint8_t> payload{handle, static_cast<std::uint8_t>(index)};
-        appendFixed(payload, vertices[index].x);
-        appendFixed(payload, vertices[index].y);
-        appendFixed(payload, vertices[index].z);
-        append(Opcode::UploadVertex, payload);
+    constexpr std::size_t verticesPerCommand = 42;
+    for (std::size_t first = 0; first < vertices.size(); first += verticesPerCommand) {
+        const std::size_t count = (std::min)(verticesPerCommand, vertices.size() - first);
+        std::vector<std::uint8_t> payload{
+            handle, static_cast<std::uint8_t>(first), static_cast<std::uint8_t>(count)};
+        payload.reserve(3 + count * 6);
+        for (std::size_t offset = 0; offset < count; ++offset) {
+            const FixedVertex& vertex = vertices[first + offset];
+            appendFixed(payload, vertex.x);
+            appendFixed(payload, vertex.y);
+            appendFixed(payload, vertex.z);
+        }
+        append(Opcode::UploadVertices, payload);
     }
-    for (std::size_t index = 0; index < triangles.size(); ++index) {
-        append(Opcode::UploadIndex, {
-            handle,
-            static_cast<std::uint8_t>(index >> 8),
-            static_cast<std::uint8_t>(index),
-            triangles[index].index0,
-            triangles[index].index1,
-            triangles[index].index2,
-            triangles[index].color
-        });
+    constexpr std::size_t indicesPerCommand = 62;
+    for (std::size_t first = 0; first < triangles.size(); first += indicesPerCommand) {
+        const std::size_t count = (std::min)(indicesPerCommand, triangles.size() - first);
+        std::vector<std::uint8_t> payload{
+            handle, static_cast<std::uint8_t>(first >> 8),
+            static_cast<std::uint8_t>(first), static_cast<std::uint8_t>(count)};
+        payload.reserve(4 + count * 4);
+        for (std::size_t offset = 0; offset < count; ++offset) {
+            const IndexedTriangle& triangle = triangles[first + offset];
+            payload.push_back(triangle.index0);
+            payload.push_back(triangle.index1);
+            payload.push_back(triangle.index2);
+            payload.push_back(triangle.color);
+        }
+        append(Opcode::UploadIndices, payload);
     }
 }
 
