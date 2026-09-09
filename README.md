@@ -36,25 +36,25 @@ Built-in demo ---------------------------------+
                                                |
                                           Command mux
                                                |
-Command processor
-      |
-Indexed mesh RAM and vertex fetch, or direct triangle
-      |
-64-entry FIFO
-      |
-3D rotation and camera transform
-      |
-Near-plane clipping
-      |
-Perspective projection using 1/z
-      |
-Viewport clipping and backface culling
-      |
-Edge-equation rasterizer and Z test
-      |
-Indexed back buffer
-      |
-Palette lookup and double-buffered VGA output
+                                          Command processor
+                                                |
+                                          Indexed mesh RAM and vertex fetch, or direct triangle
+                                                |
+                                          64-entry FIFO
+                                                |
+                                          3D rotation and camera transform
+                                                |
+                                          Near-plane clipping
+                                                |
+                                          Perspective projection using 1/z
+                                                |
+                                          Viewport clipping and backface culling
+                                                |
+                                          Edge-equation rasterizer and Z test
+                                                |
+                                          Indexed back buffer
+                                                |
+                                          Palette lookup and double-buffered VGA output
 ```
 
 The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. It acknowledges each packet with the submission ID, sequence number, result, and free FIFO space. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. Bulk mesh records are buffered in one M9K and replayed into the same command path used by the original single-record opcodes. The command processor handles palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA sends the displayed frame ID back to the computer. `SW[0]` selects Ethernet commands or the built-in demo.
@@ -97,9 +97,9 @@ Imported OBJ files created a different resource problem. The Suzanne model I tes
 
 ## Hardware
 
-The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. VGA output runs at 25 MHz
+The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. A Cyclone IV PLL generates a 25.173611 MHz VGA pixel clock for a refresh rate of about 59.94 Hz.
 
-The current build uses 11,276 logic elements, 5,487 registers, 2,094,584 memory bits, 264 M9K blocks, and 60 embedded 9-bit multiplier elements. Its worst slow-corner setup slack is 1.588 ns, and it meets all setup and hold constraints at 50 MHz.
+The current build uses 11,336 logic elements, 5,487 registers, 2,094,584 memory bits, 264 M9K blocks, 60 embedded 9-bit multiplier elements, and one PLL. Its worst slow-corner setup slack is 1.709 ns, and every clock domain meets its setup and hold constraints.
 
 
 
@@ -127,7 +127,7 @@ The current build uses 11,276 logic elements, 5,487 registers, 2,094,584 memory 
 - `rtl/demo`: top-level design and demo scene
 - `sim`: ModelSim testbenches
 - `software`: C++ library, tests, and example scene generator
-- `docs`: binary command protocol
+- `docs`: protocol, setup, viewer, and implementation roadmap
 
 ## Building
 
@@ -140,7 +140,7 @@ The default `SW[0]` OFF position runs the built-in demo. To test commands from a
 
 ## Simulation
 
-The `sim` folder contains testbenches for the command stream decoder, command processor, triangle queue, transform and clipping stages, rasterizer, VGA timing, double buffering, and demo scene.
+The `sim` folder contains testbenches for the command stream decoder, command processor, triangle queue, transform and clipping stages, rasterizer, VGA PLL and timing, double buffering, and demo scene.
 
 ## C++ Library
 

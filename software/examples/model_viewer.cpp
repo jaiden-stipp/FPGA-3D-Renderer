@@ -9,7 +9,6 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
-#include <thread>
 
 using namespace fpga_renderer;
 
@@ -89,10 +88,8 @@ int main(int argc, char** argv) {
                 std::chrono::system_clock::now().time_since_epoch()).count());
         const std::size_t instanceCount = options.instanceCount != 0
             ? options.instanceCount : (chunks.size() > 4 ? 1U : 3U);
-        constexpr auto framePeriod = std::chrono::milliseconds(33);
-        auto nextFrame = std::chrono::steady_clock::now();
-        auto reportStart = nextFrame;
-        auto previousFrame = nextFrame;
+        auto reportStart = std::chrono::steady_clock::now();
+        auto previousFrame = reportStart;
         std::size_t reportFrames = 0;
         int framesRendered = 0;
         float phase = 0.0F;
@@ -159,11 +156,6 @@ int main(int argc, char** argv) {
                 reportFrames = 0;
             }
 
-            nextFrame += framePeriod;
-            if (std::chrono::steady_clock::now() < nextFrame)
-                std::this_thread::sleep_until(nextFrame);
-            else
-                nextFrame = std::chrono::steady_clock::now();
         }
         std::cout << "\nStopped after " << framesRendered << " frames.\n";
     } catch (const std::exception& error) {

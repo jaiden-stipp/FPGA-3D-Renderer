@@ -1,5 +1,3 @@
-// 50 MHz to 25 MHz pixel-clock divider.
-
 module vga_clock_div2 (
     input  logic clk_50,
     input  logic reset,

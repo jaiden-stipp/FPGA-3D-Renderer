@@ -3,13 +3,13 @@ create_clock -name CLOCK_50 -period 20.000 [get_ports {CLOCK_50}]
 create_clock -name ENET0_RX_CLK -period 40.000 [get_ports {ENET0_RX_CLK}]
 create_clock -name ENET0_TX_CLK -period 40.000 [get_ports {ENET0_TX_CLK}]
 
-# The divider produces the 25 MHz VGA clock.
-create_generated_clock -name pixel_clk \
-    -source [get_ports {CLOCK_50}] \
-    -divide_by 2 {graphics_renderer_core:renderer|graphics_pipeline:pipeline|vga_clock_div2:clock_divider|pixel_clk}
+derive_pll_clocks
+
+set pixel_clock [get_clocks {*|clock_generator|*|clk[0]}]
 
 set_clock_groups -asynchronous \
-    -group [get_clocks {CLOCK_50 pixel_clk}] \
+    -group [get_clocks {CLOCK_50}] \
+    -group [get_clocks {*|clock_generator|*|clk[0]}] \
     -group [get_clocks {ENET0_RX_CLK}] \
     -group [get_clocks {ENET0_TX_CLK}]
 
@@ -22,8 +22,8 @@ set_output_delay -clock ENET0_TX_CLK -max 10.000 $mii_transmit_ports
 set_output_delay -clock ENET0_TX_CLK -min 0.000 $mii_transmit_ports
 
 set vga_data_ports [get_ports {VGA_R[*] VGA_G[*] VGA_B[*] VGA_BLANK_N VGA_HS VGA_VS}]
-set_output_delay -clock pixel_clk -max 0.500 $vga_data_ports
-set_output_delay -clock pixel_clk -min -1.500 $vga_data_ports
+set_output_delay -clock $pixel_clock -max 0.500 $vga_data_ports
+set_output_delay -clock $pixel_clock -min -1.500 $vga_data_ports
 
 set_false_path -from [get_ports {KEY[*] SW[*] ENET0_LINK100}]
 set_false_path -to [get_ports {ENET0_RST_N LEDG[*] VGA_CLK}]

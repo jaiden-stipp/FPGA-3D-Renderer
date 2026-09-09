@@ -28,6 +28,8 @@ build\software\Release\renderer_model_viewer.exe software\assets\monkey.obj 192.
 
 The optional arguments are `obj-file`, `address`, `port`, `frames`, and `instances`, in that order. A frame count of `0` runs until you exit. An instance count from 1 through 8 overrides the automatic choice.
 
+The viewer does not impose a software frame-rate cap. It submits the next frame as soon as the FPGA confirms that the previous frame reached the VGA display. Actual speed therefore depends on scene cost and Ethernet latency, with the 60 Hz VGA refresh setting the maximum displayed rate.
+
 ## Controls
 
 - Arrow keys rotate around X and Y.

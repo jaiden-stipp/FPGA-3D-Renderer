@@ -36,6 +36,8 @@ module graphics_pipeline #(
 );
 
     logic pixel_clk;
+    logic pixel_clock_locked;
+    logic video_reset;
     logic raster_write;
     logic [9:0] raster_x;
     logic [8:0] raster_y;
@@ -66,11 +68,14 @@ module graphics_pipeline #(
     triangle_3d_t transform_in_data;
     triangle_data_t transform_out_data;
 
-    vga_clock_div2 clock_divider (
-        .clk_50(CLOCK_50),
-        .reset(reset),
-        .pixel_clk(pixel_clk)
+    vga_pll clock_generator (
+        .inclk0(CLOCK_50),
+        .areset(reset),
+        .c0(pixel_clk),
+        .locked(pixel_clock_locked)
     );
+
+    assign video_reset = reset || !pixel_clock_locked;
 
     triangle_fifo #(
         .DEPTH(64)
@@ -176,7 +181,7 @@ module graphics_pipeline #(
         .FRAME_WIDTH(320),
         .FRAME_HEIGHT(240)
     ) display (
-        .reset(reset),
+        .reset(video_reset),
         .pixel_clk(pixel_clk),
         .raster_clk(CLOCK_50),
         .raster_write(raster_write),

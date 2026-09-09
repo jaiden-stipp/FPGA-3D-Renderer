@@ -5,7 +5,7 @@ set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl mem
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl memory zbuffer_ip.v]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) rtl memory palette_ip.v]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl memory framebuffer.sv]
-set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_clock_div2.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_pll.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_timing.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl video vga_controller.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) rtl pipeline renderer.sv]
