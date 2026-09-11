@@ -2,7 +2,10 @@
 
 An FPGA-based 3D triangle renderer written in SystemVerilog. The hardware draws 3D triangles on a 640 x 480 VGA display without a CPU or GPU. A C++ library builds custom scenes and command streams for the renderer.
 
-<img width="5712" height="4284" alt="image" src="https://github.com/user-attachments/assets/97d45a35-ecdc-47d5-a79c-db0eb28f1308" />
+<img width="2880" height="2160" alt="image" src="https://github.com/user-attachments/assets/6ea2d2a4-5762-437d-8988-672ec8d88c7b" />
+
+<img width="2880" height="2160" alt="image" src="https://github.com/user-attachments/assets/375ede41-1f6e-4055-afef-77cd5e20ae13" />
+
 
 
 ## Features
