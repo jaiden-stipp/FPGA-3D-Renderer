@@ -34,7 +34,9 @@ int main(int argc, char** argv) {
     commands.setPalette(4, {255, 255, 48});
     commands.setPalette(5, {255, 48, 255});
     commands.setPalette(6, {48, 255, 255});
-    commands.setRotation(0);
+    commands.setViewMatrix(Mat4::translation(0.0F, 0.0F, 5.0F) *
+                           Mat4::rotationX(-0.490873852F));
+    commands.setProjection({});
     commands.beginFrame(1);
     commands.drawMesh(makeCube(), Mat4::scale(0.75F, 0.75F, 0.75F));
     commands.endFrame();

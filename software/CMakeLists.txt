@@ -10,7 +10,11 @@ if(FPGA_RENDERER_ENABLE_SANITIZERS AND NOT MSVC)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-add_library(fpga_renderer src/renderer.cpp src/udp_transport.cpp src/obj_model.cpp)
+add_library(fpga_renderer
+    src/renderer.cpp
+    src/protocol_codec.cpp
+    src/udp_transport.cpp
+    src/obj_model.cpp)
 target_include_directories(fpga_renderer PUBLIC include)
 target_compile_features(fpga_renderer PUBLIC cxx_std_17)
 if(WIN32)

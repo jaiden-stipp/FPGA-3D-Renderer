@@ -5,7 +5,7 @@
 module transform_clipping_tb;
     logic clk;
     logic reset;
-    logic [7:0] rotation_angle;
+    projection_config_t projection;
     triangle_3d_t in_data;
     logic in_valid;
     logic in_ready;
@@ -13,27 +13,33 @@ module transform_clipping_tb;
     logic out_valid;
     logic out_ready;
     logic busy;
+    logic triangle_clipped;
+    logic triangle_culled;
     integer output_count;
+    integer clipped_count;
 
     transform_3d_pipeline #(
-        .BACKFACE_CULL(1'b0),
-        .VIEW_PITCH_ANGLE(8'd0)
+        .BACKFACE_CULL(1'b0)
     ) dut (
         .clk(clk),
         .reset(reset),
-        .rotation_angle(rotation_angle),
+        .projection(projection),
         .in_data(in_data),
         .in_valid(in_valid),
         .in_ready(in_ready),
         .out_data(out_data),
         .out_valid(out_valid),
         .out_ready(out_ready),
-        .busy(busy)
+        .busy(busy),
+        .triangle_clipped(triangle_clipped),
+        .triangle_culled(triangle_culled)
     );
 
     always #1 clk = ~clk;
 
     always @(posedge clk) begin
+        if (!reset && triangle_clipped)
+            clipped_count = clipped_count + 1;
         if (!reset && out_valid && out_ready) begin
             output_count = output_count + 1;
             if ((out_data.x0 > 10'd319) || (out_data.x1 > 10'd319) ||
@@ -71,38 +77,43 @@ module transform_clipping_tb;
     initial begin
         clk = 1'b0;
         reset = 1'b1;
-        rotation_angle = 8'd0;
+        projection = '{16'sd256, 16'sd256, 16'sd160, 16'sd120, 16'sd512};
         in_valid = 1'b0;
         out_ready = 1'b1;
         in_data = '0;
         output_count = 0;
+        clipped_count = 0;
 
         repeat (2) @(posedge clk);
         reset = 1'b0;
 
         in_data.x0 = -16'sh0080;
         in_data.y0 = -16'sh0080;
-        in_data.z0 = -16'sh0400;
+        in_data.z0 = 16'sh0100;
         in_data.x1 = 16'sh0080;
         in_data.y1 = -16'sh0080;
-        in_data.z1 = 16'sh0000;
+        in_data.z1 = 16'sh0500;
         in_data.x2 = 16'sh0000;
         in_data.y2 = 16'sh0080;
-        in_data.z2 = 16'sh0000;
+        in_data.z2 = 16'sh0500;
         in_data.color = 8'hE0;
         submit_and_check(2);
 
         in_data.x0 = -16'sh0800;
         in_data.y0 = -16'sh0800;
-        in_data.z0 = 16'sh0000;
+        in_data.z0 = 16'sh0500;
         in_data.x1 = 16'sh0800;
         in_data.y1 = -16'sh0800;
-        in_data.z1 = 16'sh0000;
+        in_data.z1 = 16'sh0500;
         in_data.x2 = 16'sh0000;
         in_data.y2 = 16'sh0800;
-        in_data.z2 = 16'sh0000;
+        in_data.z2 = 16'sh0500;
         in_data.color = 8'h1F;
         submit_and_check(4);
+
+        if (clipped_count != 2)
+            $fatal(1, "expected two source triangles to be clipped, got %0d",
+                   clipped_count);
 
         $display("transform_clipping_tb PASS: near and viewport clipping work");
         $finish;

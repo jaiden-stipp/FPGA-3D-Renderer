@@ -3,7 +3,7 @@
 `include "renderer_types.svh"
 
 module graphics_pipeline #(
-    parameter int FPS_PERIOD_CYCLES = 50_000_000
+    parameter int FPS_MEASUREMENT_PERIOD_CYCLES = `GFX_SYSTEM_CLOCK_HZ
 ) (
     input  logic        CLOCK_50,
     input  logic        reset,
@@ -12,14 +12,17 @@ module graphics_pipeline #(
     input  logic         triangle_in_valid,
     output logic         triangle_in_ready,
 
-    input  logic [7:0] rotation_angle,
+    input  model_matrix_3x4_t view_matrix,
+    input  projection_config_t projection,
 
     input  logic         clear_request,
     output logic         clear_busy,
+    input  logic         frame_start,
     input  logic         swap_request,
     output logic         swap_busy,
     output logic         swap_done,
     output logic         pipeline_idle,
+    output renderer_stats_t frame_statistics,
 
     input  logic        palette_write,
     input  logic [7:0] palette_address,
@@ -58,14 +61,25 @@ module graphics_pipeline #(
     logic triangle_fifo_full;
     logic transform_in_valid;
     logic transform_in_ready;
+    logic view_out_valid;
+    logic view_out_ready;
+    logic view_busy;
     logic transform_out_valid;
     logic transform_out_ready;
     logic transform_busy;
     logic renderer_triangle_ready;
+    logic transform_triangle_clipped;
+    logic transform_triangle_culled;
+    logic renderer_busy;
+    logic bounding_box_pixel;
+    logic pixel_inside;
+    logic depth_rejected;
+    logic pixel_written;
     logic [25:0] fps_cycle_count;
     logic [7:0] fps_frame_count;
     logic [7:0] fps_value;
     triangle_3d_t transform_in_data;
+    triangle_3d_t view_out_data;
     triangle_data_t transform_out_data;
 
     vga_pll clock_generator (
@@ -93,21 +107,37 @@ module graphics_pipeline #(
         .full(triangle_fifo_full)
     );
 
+    view_transform_stage view_transform (
+        .clk(CLOCK_50),
+        .reset(reset),
+        .view_matrix(view_matrix),
+        .in_data(transform_in_data),
+        .in_valid(transform_in_valid && !clear_request && !clear_busy &&
+                  !swap_busy),
+        .in_ready(transform_in_ready),
+        .out_data(view_out_data),
+        .out_valid(view_out_valid),
+        .out_ready(view_out_ready),
+        .busy(view_busy)
+    );
+
     transform_3d_pipeline #(
         .SCREEN_WIDTH(320),
         .SCREEN_HEIGHT(240)
     ) transform (
         .clk(CLOCK_50),
         .reset(reset),
-        .rotation_angle(rotation_angle),
-        .in_data(transform_in_data),
-        .in_valid(transform_in_valid && !clear_request && !clear_busy &&
+        .projection(projection),
+        .in_data(view_out_data),
+        .in_valid(view_out_valid && !clear_request && !clear_busy &&
                   !swap_busy),
-        .in_ready(transform_in_ready),
+        .in_ready(view_out_ready),
         .out_data(transform_out_data),
         .out_valid(transform_out_valid),
         .out_ready(transform_out_ready),
-        .busy(transform_busy)
+        .busy(transform_busy),
+        .triangle_clipped(transform_triangle_clipped),
+        .triangle_culled(transform_triangle_culled)
     );
 
     renderer #(
@@ -131,7 +161,35 @@ module graphics_pipeline #(
         .depth_write_enable(depth_write_enable),
         .depth_write_x(depth_write_x),
         .depth_write_y(depth_write_y),
-        .depth_write_value(depth_write_value)
+        .depth_write_value(depth_write_value),
+        .busy(renderer_busy),
+        .bounding_box_pixel(bounding_box_pixel),
+        .pixel_inside(pixel_inside),
+        .depth_rejected(depth_rejected),
+        .pixel_written(pixel_written)
+    );
+
+    render_performance_counters performance_counters (
+        .clk(CLOCK_50),
+        .reset(reset),
+        .frame_start(frame_start),
+        .frame_complete(swap_done),
+        .swap_wait_start(swap_request),
+        .triangle_submitted(triangle_in_valid && triangle_in_ready),
+        .triangle_clipped(transform_triangle_clipped),
+        .triangle_culled(transform_triangle_culled),
+        .bounding_box_pixel(bounding_box_pixel),
+        .pixel_inside(pixel_inside),
+        .depth_rejected(depth_rejected),
+        .pixel_written(pixel_written),
+        .geometry_active((view_busy || transform_busy) &&
+                         !((view_out_valid && !view_out_ready) ||
+                           (transform_out_valid && !transform_out_ready))),
+        .geometry_stalled((view_out_valid && !view_out_ready) ||
+                          (transform_out_valid && !transform_out_ready)),
+        .raster_active(renderer_busy),
+        .clear_active(clear_busy),
+        .completed_stats(frame_statistics)
     );
 
     zbuffer depth_memory (
@@ -154,7 +212,7 @@ module graphics_pipeline #(
 
     assign transform_out_ready = renderer_triangle_ready && !clear_busy &&
                                  !swap_busy;
-    assign pipeline_idle = triangle_fifo_empty && !transform_busy &&
+    assign pipeline_idle = triangle_fifo_empty && !view_busy && !transform_busy &&
                            renderer_triangle_ready && !clear_busy &&
                            !clear_request && !swap_busy;
 
@@ -163,7 +221,7 @@ module graphics_pipeline #(
             fps_cycle_count <= '0;
             fps_frame_count <= '0;
             fps_value <= '0;
-        end else if (fps_cycle_count == FPS_PERIOD_CYCLES - 1) begin
+        end else if (fps_cycle_count == FPS_MEASUREMENT_PERIOD_CYCLES - 1) begin
             fps_cycle_count <= '0;
             if (swap_done && (fps_frame_count != 8'hFF))
                 fps_value <= fps_frame_count + 1'b1;

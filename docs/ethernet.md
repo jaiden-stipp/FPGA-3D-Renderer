@@ -39,7 +39,7 @@ Every host-to-FPGA UDP payload starts with this header. Multi-byte fields are bi
 | Field | Bytes | Value |
 | --- | ---: | --- |
 | Magic | 2 | `47 50` (`GP`) |
-| Version | 1 | `01` |
+| Version | 1 | `02` |
 | Flags | 1 | Bit 0: first packet, bit 1: last packet |
 | Submission ID | 4 | Orders transport packets and identifies acknowledgements |
 | Sequence | 2 | Starts at zero and rises by one |
@@ -51,18 +51,22 @@ The C++ client assigns a new submission ID to each upload or frame transfer. The
 
 ## Status Format
 
-The FPGA sends a 20-byte UDP status payload back to the source port used by the client.
+The FPGA sends status UDP payloads back to the source port used by the client. Packet acknowledgements are 20 bytes. Frame-display events are 68 bytes because they include the completed frame's hardware performance counters.
 
 | Field | Bytes | Value |
 | --- | ---: | --- |
 | Magic | 2 | `47 53` (`GS`) |
-| Version | 1 | `01` |
+| Version | 1 | `02` |
 | Event | 1 | `01`: packet acknowledgement, `02`: frame displayed |
 | ID | 4 | Submission ID for acknowledgements; `BEGIN_FRAME` ID for display events |
 | Sequence | 2 | Packet sequence number |
 | FIFO free | 2 | Free bytes in the 2048-byte receive FIFO |
 | Status flags | 4 | Result and error bits |
-| Reserved | 4 | Zero |
+| Performance counters | 52 | Present only for a frame-display event |
+
+The performance block contains thirteen unsigned 32-bit values in this order: triangles submitted, source triangles changed by clipping, post-clipping triangles culled, bounding-box pixels tested, pixels inside triangles, depth-test rejections, pixels written, geometry work cycles, geometry backpressure cycles, rasterizer cycles, clear cycles, total frame cycles, and VGA swap-wait cycles. Cycle counts use the 50 MHz system clock.
+
+`Triangles submitted` counts direct triangles and indexed triangles fetched from mesh RAM. A source triangle is counted as clipped once if any near-plane or screen-plane operation changes or removes it. Culling is counted per triangle in the clipped polygon's output fan, so clipping can cause more than one culling decision for one submitted triangle.
 
 Status flag bits are: accepted (0), duplicate retry (1), busy (2), sequence error (3), malformed packet (4), receive overflow (5), command CRC/decoder error (8), renderer command error (9), and clock-crossing FIFO overflow (10).
 
@@ -90,8 +94,12 @@ Set the wired Ethernet adapter to a manual IPv4 address:
 Wait for the link lights, then run:
 
 ```text
+cmake -S . -B build
+cmake --build build --config Release
 build\software\Release\renderer_udp_demo.exe 192.168.7.2 4000
 ```
+
+Run the executable from the same build directory you just rebuilt. The FPGA and C++ client share a wire protocol. After changing the status format or command protocol, rebuild the client and program the matching `Graphics.sof`; an older executable may acknowledge command packets but fail to recognize the newer frame-display response.
 
 If `LEDG[1]` stays off, set the computer adapter's Speed and Duplex setting to `100 Mbps Full Duplex`, reconnect the cable, and reset the board.
 
@@ -116,7 +124,7 @@ build\software\Release\renderer_scene_tests.exe orbit 192.168.7.2 4000 180
 - `orbit` animates three independently transformed cubes. The last argument controls the number of frames.
 - `all` shows each static test for two seconds and then runs the orbit animation.
 
-Each line printed by the program includes the frame ID, command byte count, packet count, completion time, free FIFO bytes, and FPGA status flags. A zero flag value means the completed frame had no reported command or receive errors.
+Each report printed by the program includes the frame ID, command byte count, packet count, completion time, free FIFO bytes, error flags, triangle counts, pixel counts, and stage cycle counts. A zero flag value means the completed frame had no reported command or receive errors.
 
 The orbit test uploads one indexed cube to mesh handle 0, then draws that same stored mesh three times per frame with different model matrices.
 
@@ -138,3 +146,9 @@ Set `SW[0]` to OFF and press `KEY[0]` to return to the built-in rotating demo.
 - Command CRC errors are detected by the graphics stream decoder
 - One host and one frame may be in flight at a time
 - Status delivery uses UDP, so the C++ client retries packet acknowledgements and times out if frame completion is lost
+
+## Frame Timeout Troubleshooting
+
+If packet transfer succeeds but the client times out while waiting for a frame ID, first rebuild the C++ programs and confirm that you launched the executable from that build directory. Protocol version 2 returns a 68-byte frame event. An older client ignores that completion packet and eventually reports a timeout.
+
+Use `renderer_scene_tests palette 192.168.7.2 4000` as a short end-to-end check. A successful result prints the displayed frame ID, `flags 0x0`, FIFO space, and the hardware counters. If the packet itself times out instead, check `SW[0]`, ENET0 link state, the computer's static IPv4 address, and the programmed SOF.

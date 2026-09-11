@@ -13,8 +13,8 @@ namespace fpga_renderer {
 
 namespace {
 
-constexpr std::size_t maximumVerticesPerMesh = 128;
-constexpr std::size_t maximumTrianglesPerMesh = 256;
+constexpr std::size_t maximumVerticesPerMesh = protocol::verticesPerMesh;
+constexpr std::size_t maximumTrianglesPerMesh = protocol::trianglesPerMesh;
 
 struct GridPoint {
     long long x;

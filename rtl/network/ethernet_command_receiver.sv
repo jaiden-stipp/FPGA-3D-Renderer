@@ -17,6 +17,7 @@ module ethernet_command_receiver (
     input logic command_error,
     input logic frame_done,
     input logic [31:0] frame_done_id,
+    input renderer_stats_t frame_statistics,
     output logic decoder_error,
     output logic receive_overflow,
     output logic packet_seen
@@ -24,7 +25,7 @@ module ethernet_command_receiver (
 
     localparam logic [47:0] LOCAL_MAC = 48'h020000000001;
     localparam logic [31:0] LOCAL_IP = 32'hC0A80702;
-    localparam logic [15:0] LOCAL_PORT = 16'd4000;
+    localparam logic [15:0] LOCAL_PORT = `GFX_DEFAULT_UDP_PORT;
 
     logic [7:0] payload_data;
     logic payload_valid;
@@ -34,9 +35,11 @@ module ethernet_command_receiver (
     logic arp_request;
     logic [47:0] arp_sender_mac;
     logic [31:0] arp_sender_ip;
-    logic arp_request_toggle;
-    logic [47:0] arp_request_mac;
-    logic [31:0] arp_request_ip;
+    logic [79:0] arp_queue_write_data;
+    logic arp_queue_write_ready;
+    logic [79:0] arp_queue_read_data;
+    logic arp_queue_read_valid;
+    logic arp_queue_read_ready;
     logic [7:0] fifo_data;
     logic fifo_valid;
     logic fifo_ready;
@@ -51,18 +54,17 @@ module ethernet_command_receiver (
     logic [15:0] packet_sequence;
     logic [31:0] packet_status_flags;
     logic [11:0] packet_fifo_free;
-    logic packet_status_toggle;
-    logic [47:0] packet_status_mac;
-    logic [31:0] packet_status_ip;
-    logic [15:0] packet_status_port;
-    logic [31:0] packet_status_frame_id;
-    logic [15:0] packet_status_sequence;
-    logic [31:0] packet_status_result;
-    logic [11:0] packet_status_free;
-    logic frame_status_toggle;
-    logic [31:0] frame_status_id;
-    logic [31:0] frame_status_flags;
-    logic [11:0] frame_status_free;
+    logic [187:0] packet_queue_write_data;
+    logic packet_queue_write_ready;
+    logic [187:0] packet_queue_read_data;
+    logic packet_queue_read_valid;
+    logic packet_queue_read_ready;
+    localparam int FRAME_QUEUE_WIDTH = 76 + $bits(renderer_stats_t);
+    logic [FRAME_QUEUE_WIDTH-1:0] frame_queue_write_data;
+    logic frame_queue_write_ready;
+    logic [FRAME_QUEUE_WIDTH-1:0] frame_queue_read_data;
+    logic frame_queue_read_valid;
+    logic frame_queue_read_ready;
     logic [31:0] active_error_flags;
     logic packet_toggle;
     logic packet_sync1;
@@ -102,43 +104,70 @@ module ethernet_command_receiver (
         .arp_sender_ip(arp_sender_ip)
     );
 
+    assign arp_queue_write_data = {arp_sender_mac, arp_sender_ip};
+    assign packet_queue_write_data = {
+        packet_sender_mac, packet_sender_ip, packet_sender_port,
+        packet_frame_id, packet_sequence, packet_fifo_free,
+        packet_status_flags
+    };
+    assign frame_queue_write_data = {
+        frame_done_id, fifo_free_sync2, active_error_flags, frame_statistics
+    };
+
     always_ff @(posedge mii_rx_clk or posedge reset) begin
         if (reset) begin
-            arp_request_toggle <= 1'b0;
-            arp_request_mac <= '0;
-            arp_request_ip <= '0;
-            packet_status_toggle <= 1'b0;
-            packet_status_mac <= '0;
-            packet_status_ip <= '0;
-            packet_status_port <= '0;
-            packet_status_frame_id <= '0;
-            packet_status_sequence <= '0;
-            packet_status_result <= '0;
-            packet_status_free <= '0;
             packet_toggle <= 1'b0;
             overflow_toggle <= 1'b0;
         end else begin
-            if (arp_request) begin
-                arp_request_mac <= arp_sender_mac;
-                arp_request_ip <= arp_sender_ip;
-                arp_request_toggle <= ~arp_request_toggle;
-            end
-            if (packet_status) begin
-                packet_status_mac <= packet_sender_mac;
-                packet_status_ip <= packet_sender_ip;
-                packet_status_port <= packet_sender_port;
-                packet_status_frame_id <= packet_frame_id;
-                packet_status_sequence <= packet_sequence;
-                packet_status_result <= packet_status_flags;
-                packet_status_free <= packet_fifo_free;
-                packet_status_toggle <= ~packet_status_toggle;
-            end
             if (packet_received)
                 packet_toggle <= ~packet_toggle;
-            if (payload_overflow)
+            if (payload_overflow || (arp_request && !arp_queue_write_ready) ||
+                (packet_status && !packet_queue_write_ready))
                 overflow_toggle <= ~overflow_toggle;
         end
     end
+
+    async_fifo #(.WIDTH(80), .ADDRESS_WIDTH(2)) arp_response_queue (
+        .write_clk(mii_rx_clk),
+        .write_reset(reset),
+        .write_data(arp_queue_write_data),
+        .write_valid(arp_request),
+        .write_ready(arp_queue_write_ready),
+        .write_free(),
+        .read_clk(mii_tx_clk),
+        .read_reset(reset),
+        .read_data(arp_queue_read_data),
+        .read_valid(arp_queue_read_valid),
+        .read_ready(arp_queue_read_ready)
+    );
+
+    async_fifo #(.WIDTH(188), .ADDRESS_WIDTH(2)) packet_response_queue (
+        .write_clk(mii_rx_clk),
+        .write_reset(reset),
+        .write_data(packet_queue_write_data),
+        .write_valid(packet_status),
+        .write_ready(packet_queue_write_ready),
+        .write_free(),
+        .read_clk(mii_tx_clk),
+        .read_reset(reset),
+        .read_data(packet_queue_read_data),
+        .read_valid(packet_queue_read_valid),
+        .read_ready(packet_queue_read_ready)
+    );
+
+    async_fifo #(.WIDTH(FRAME_QUEUE_WIDTH), .ADDRESS_WIDTH(2)) frame_response_queue (
+        .write_clk(system_clk),
+        .write_reset(reset),
+        .write_data(frame_queue_write_data),
+        .write_valid(frame_done),
+        .write_ready(frame_queue_write_ready),
+        .write_free(),
+        .read_clk(mii_tx_clk),
+        .read_reset(reset),
+        .read_data(frame_queue_read_data),
+        .read_valid(frame_queue_read_valid),
+        .read_ready(frame_queue_read_ready)
+    );
 
     mii_response_transmitter #(
         .LOCAL_MAC(LOCAL_MAC),
@@ -147,28 +176,32 @@ module ethernet_command_receiver (
     ) response_transmitter (
         .tx_clk(mii_tx_clk),
         .reset(reset),
-        .arp_toggle(arp_request_toggle),
-        .arp_mac(arp_request_mac),
-        .arp_ip(arp_request_ip),
-        .packet_toggle(packet_status_toggle),
-        .packet_mac(packet_status_mac),
-        .packet_ip(packet_status_ip),
-        .packet_port(packet_status_port),
-        .packet_frame_id(packet_status_frame_id),
-        .packet_sequence(packet_status_sequence),
-        .packet_fifo_free(packet_status_free),
-        .packet_flags(packet_status_result),
-        .frame_toggle(frame_status_toggle),
-        .frame_id(frame_status_id),
-        .frame_fifo_free(frame_status_free),
-        .frame_flags(frame_status_flags),
+        .arp_valid(arp_queue_read_valid),
+        .arp_ready(arp_queue_read_ready),
+        .arp_mac(arp_queue_read_data[79:32]),
+        .arp_ip(arp_queue_read_data[31:0]),
+        .packet_valid(packet_queue_read_valid),
+        .packet_ready(packet_queue_read_ready),
+        .packet_mac(packet_queue_read_data[187:140]),
+        .packet_ip(packet_queue_read_data[139:108]),
+        .packet_port(packet_queue_read_data[107:92]),
+        .packet_frame_id(packet_queue_read_data[91:60]),
+        .packet_sequence(packet_queue_read_data[59:44]),
+        .packet_fifo_free(packet_queue_read_data[43:32]),
+        .packet_flags(packet_queue_read_data[31:0]),
+        .frame_valid(frame_queue_read_valid),
+        .frame_ready(frame_queue_read_ready),
+        .frame_id(frame_queue_read_data[FRAME_QUEUE_WIDTH-1 -: 32]),
+        .frame_fifo_free(frame_queue_read_data[FRAME_QUEUE_WIDTH-33 -: 12]),
+        .frame_flags(frame_queue_read_data[FRAME_QUEUE_WIDTH-45 -: 32]),
+        .frame_statistics(frame_queue_read_data[$bits(renderer_stats_t)-1:0]),
         .tx_data(mii_tx_data),
         .tx_en(mii_tx_en),
         .tx_er(mii_tx_er)
     );
 
     async_byte_fifo #(
-        .ADDRESS_WIDTH(11)
+        .ADDRESS_WIDTH($clog2(`GFX_RECEIVE_FIFO_BYTES))
     ) receive_fifo (
         .write_clk(mii_rx_clk),
         .write_reset(reset),
@@ -207,10 +240,6 @@ module ethernet_command_receiver (
             receive_overflow <= 1'b0;
             fifo_free_sync1 <= '0;
             fifo_free_sync2 <= '0;
-            frame_status_toggle <= 1'b0;
-            frame_status_id <= '0;
-            frame_status_flags <= '0;
-            frame_status_free <= '0;
             active_error_flags <= '0;
         end else begin
             fifo_free_sync1 <= fifo_free;
@@ -225,17 +254,14 @@ module ethernet_command_receiver (
                 packet_seen <= 1'b1;
             if (overflow_sync2 != overflow_previous)
                 receive_overflow <= 1'b1;
-            if (decoder_error)
-                active_error_flags[8] <= 1'b1;
-            if (command_error)
-                active_error_flags[9] <= 1'b1;
-            if (overflow_sync2 != overflow_previous)
-                active_error_flags[10] <= 1'b1;
+            active_error_flags <= active_error_flags |
+                ({32{decoder_error}} & `GFX_STATUS_DECODER_ERROR) |
+                ({32{command_error}} & `GFX_STATUS_COMMAND_ERROR) |
+                ({32{overflow_sync2 != overflow_previous}} &
+                 `GFX_STATUS_RECEIVE_OVERFLOW);
+            if (frame_done && !frame_queue_write_ready)
+                receive_overflow <= 1'b1;
             if (frame_done) begin
-                frame_status_id <= frame_done_id;
-                frame_status_flags <= active_error_flags;
-                frame_status_free <= fifo_free_sync2;
-                frame_status_toggle <= ~frame_status_toggle;
                 active_error_flags <= '0;
             end
         end

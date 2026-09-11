@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fpga_renderer/protocol_generated.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -54,7 +56,7 @@ struct ViewerState {
 struct ViewerOptions {
     std::filesystem::path modelPath;
     std::string address = "192.168.7.2";
-    std::uint16_t port = 4000;
+    std::uint16_t port = fpga_renderer::protocol::defaultUdpPort;
     int frameLimit = 0;
     std::size_t instanceCount = 0;
     bool inspectOnly = false;

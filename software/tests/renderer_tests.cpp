@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -106,7 +107,7 @@ void testChunkedTransport() {
                                            reinterpret_cast<sockaddr*>(&peer), &peerLength);
 #endif
             if (received < 12 || packet[0] != 0x47 || packet[1] != 0x50 ||
-                packet[2] != 1) {
+                packet[2] != protocol::transportVersion) {
                 serverValid = false;
                 return;
             }
@@ -130,7 +131,7 @@ void testChunkedTransport() {
             std::vector<std::uint8_t> status(20, 0);
             status[0] = 0x47;
             status[1] = 0x53;
-            status[2] = 1;
+            status[2] = protocol::statusVersion;
             status[3] = 1;
             write32(status, 4, submissionId);
             write16(status, 8, sequence);
@@ -146,8 +147,12 @@ void testChunkedTransport() {
 #endif
             ++packetCount;
             if (last) {
+                status.resize(protocol::frameStatusBytes, 0);
                 status[3] = 2;
                 write32(status, 4, 0x89ABCDEF);
+                for (std::size_t index = 0; index < 13; ++index)
+                    write32(status, 16 + index * 4,
+                            static_cast<std::uint32_t>(index + 1));
 #ifdef _WIN32
                 sendto(server, reinterpret_cast<const char*>(status.data()),
                        static_cast<int>(status.size()), 0,
@@ -160,7 +165,7 @@ void testChunkedTransport() {
         }
     });
 
-    RendererStatus status{};
+    FrameResult status{};
     {
         RendererClient client("127.0.0.1", port);
         status = client.submit(large);
@@ -169,8 +174,22 @@ void testChunkedTransport() {
     require(serverValid);
     require(packetCount >= 2);
     require(receivedCommands == large.bytes());
-    require(status.event == StatusEvent::FrameDisplayed);
     require(status.frameId == 0x89ABCDEF);
+    require(status.statistics.trianglesSubmitted == 1);
+    require(status.statistics.trianglesClipped == 2);
+    require(status.statistics.trianglesCulled == 3);
+    require(status.statistics.boundingBoxPixels == 4);
+    require(status.statistics.pixelsInside == 5);
+    require(status.statistics.depthRejected == 6);
+    require(status.statistics.pixelsWritten == 7);
+    require(status.statistics.geometryCycles == 8);
+    require(status.statistics.geometryStallCycles == 9);
+    require(status.statistics.rasterCycles == 10);
+    require(status.statistics.clearCycles == 11);
+    require(status.statistics.totalCycles == 12);
+    require(status.statistics.swapWaitCycles == 13);
+    require(formatFrameStatistics(status.statistics).find("triangles submitted 1") !=
+            std::string::npos);
 
 #ifdef _WIN32
     closesocket(server);
@@ -182,17 +201,27 @@ void testChunkedTransport() {
 
 }
 
-int main() {
+void runTests() {
     CommandStream stream;
-    stream.setRotation(0x5A);
-    require(stream.bytes() == std::vector<std::uint8_t>({
-        0x47, 0x46, 0x01, 0x00, 0x01, 0x5A, 0xCE, 0x96
-    }));
+    stream.setViewMatrix(Mat4::translation(0.0F, 0.0F, 5.0F));
+    require(stream.bytes().size() == 31);
+    require(stream.bytes()[2] == protocol::commandVersion);
+    require(stream.bytes()[3] == static_cast<std::uint8_t>(Opcode::SetViewMatrix));
+    require(stream.bytes()[4] == 24);
+    require(stream.bytes()[27] == 0x05 && stream.bytes()[28] == 0x00);
+
+    stream.clear();
+    stream.setProjection({256, 256, 160, 120, 2.0F});
+    require(stream.bytes().size() == 17);
+    require(stream.bytes()[3] == static_cast<std::uint8_t>(Opcode::SetProjection));
+    require(stream.bytes()[4] == 10);
+    require(stream.bytes()[5] == 0x01 && stream.bytes()[6] == 0x00);
+    require(stream.bytes()[13] == 0x02 && stream.bytes()[14] == 0x00);
 
     stream.clear();
     stream.setPalette(0x07, {0xA1, 0xB2, 0xC3});
     require(stream.bytes() == std::vector<std::uint8_t>({
-        0x47, 0x46, 0x01, 0x04, 0x04, 0x07, 0xA1, 0xB2, 0xC3, 0xFD, 0x1C
+        0x47, 0x46, 0x02, 0x04, 0x04, 0x07, 0xA1, 0xB2, 0xC3, 0x25, 0x9E
     }));
 
     Mesh indexedMesh;
@@ -241,12 +270,12 @@ int main() {
         0x2F
     });
     require(stream.bytes() == std::vector<std::uint8_t>({
-        0x47, 0x46, 0x01, 0x01, 0x04, 0x12, 0x34, 0x56, 0x78, 0x40, 0xF0,
-        0x47, 0x46, 0x01, 0x02, 0x13,
+        0x47, 0x46, 0x02, 0x01, 0x04, 0x12, 0x34, 0x56, 0x78, 0x98, 0x72,
+        0x47, 0x46, 0x02, 0x02, 0x13,
         0x01, 0x00, 0xFF, 0x00, 0x00, 0x80,
         0x02, 0x00, 0x00, 0x00, 0xFF, 0x80,
         0xFE, 0x00, 0x01, 0x00, 0x00, 0x00, 0x2F,
-        0x58, 0xD8
+        0xEE, 0xB0
     }));
     stream.endFrame();
     require(stream.frameId() == 0x12345678);
@@ -276,4 +305,14 @@ int main() {
     require(missingFrameRejected);
 
     testChunkedTransport();
+}
+
+int main() {
+    try {
+        runTests();
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }

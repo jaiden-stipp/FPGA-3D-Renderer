@@ -9,7 +9,7 @@ All multi-byte values are big-endian.
 | Field | Bytes | Value |
 | --- | ---: | --- |
 | Magic | 2 | `47 46` (`GF`) |
-| Version | 1 | `01` |
+| Version | 1 | `02` |
 | Opcode | 1 | Command type |
 | Payload length | 1 | Number of payload bytes |
 | Payload | 0-255 | Command data |
@@ -21,7 +21,6 @@ The CRC starts at `FFFF` and uses polynomial `1021`. The decoder checks each com
 
 | Opcode | Name | Payload |
 | ---: | --- | --- |
-| `00` | Set rotation | One 8-bit angle |
 | `01` | Begin frame | 32-bit frame ID |
 | `02` | Draw triangle | Nine signed Q8.8 coordinates followed by one palette index |
 | `03` | End frame | Empty |
@@ -32,6 +31,8 @@ The CRC starts at `FFFF` and uses polynomial `1021`. The decoder checks each com
 | `08` | Draw mesh | Handle and a row-major Q8.8 3 x 4 model matrix |
 | `09` | Upload vertices | Handle, first vertex number, count, then packed vertex records |
 | `0A` | Upload indices | Handle, first triangle number, count, then packed index records |
+| `0B` | Set view matrix | Row-major Q8.8 3 x 4 camera matrix |
+| `0C` | Set projection | Focal X, focal Y, center X, center Y, and signed Q8.8 near Z |
 
 `Begin frame` stores the frame ID and clears the back color buffer and Z-buffer. Draw commands then enter the ready/valid graphics pipeline. `End frame` waits for all triangles to finish and swaps buffers during vertical blanking. The same frame ID is returned in the displayed-frame UDP status packet.
 
@@ -67,4 +68,12 @@ y' = m10*x + m11*y + m12*z + m13
 z' = m20*x + m21*y + m22*z + m23
 ```
 
-The transformed triangle then enters the existing camera rotation, clipping, perspective projection, rasterization, and Z-test pipeline. Results outside the signed Q8.8 coordinate range are saturated.
+The transformed triangle then enters the view, clipping, perspective projection, rasterization, and Z-test pipeline. Results outside the signed Q8.8 coordinate range are saturated.
+
+## Camera State
+
+`Set view matrix` uses the same 24-byte matrix layout as `Draw mesh`. The matrix converts world coordinates to camera coordinates. Camera state may only change between frames and remains active until another command replaces it.
+
+`Set projection` has a ten-byte payload containing five signed 16-bit values. Focal X and Y and center X and Y are pixel units. Near Z is Q8.8 camera-space depth. Projection computes `screen_x = center_x + focal_x*x/z` and `screen_y = center_y - focal_y*y/z`. The default is focal length 256, center `(160, 120)`, and near depth 2.0.
+
+`protocol/protocol.json` is the canonical specification for versions, magic values, sizes, limits, opcodes, status events, and status flags. Run `scripts/generate_protocol.ps1` after changing it; generated SystemVerilog and C++ definitions must not be edited directly.

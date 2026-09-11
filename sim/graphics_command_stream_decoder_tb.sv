@@ -67,16 +67,20 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
-        send_byte(8'h00);
-        send_byte(8'h01);
-        send_byte(8'h5A);
-        send_byte(8'hCE);
-        send_byte(8'h96);
+        send_byte(`GFX_COMMAND_VERSION);
+        send_byte(`GFX_WIRE_CMD_SET_PROJECTION);
+        send_byte(8'h0A);
+        send_byte(8'h01); send_byte(8'h00);
+        send_byte(8'h01); send_byte(8'h00);
+        send_byte(8'h00); send_byte(8'hA0);
+        send_byte(8'h00); send_byte(8'h78);
+        send_byte(8'h02); send_byte(8'h00);
+        send_byte(8'hB7); send_byte(8'h3B);
         wait (command_valid);
-        if (command_data.opcode != GFX_CMD_SET_ROTATION ||
-            command_data.payload[7:0] != 8'h5A)
-            $fatal(1, "rotation frame decoded incorrectly");
+        if (command_data.opcode != GFX_CMD_SET_PROJECTION ||
+            `GFX_PROJECTION(command_data) != {16'sd256, 16'sd256,
+                16'sd160, 16'sd120, 16'sd512})
+            $fatal(1, "projection command decoded incorrectly");
         repeat (2) @(posedge clk);
         if (!command_valid || byte_ready)
             $fatal(1, "decoder did not hold its command under backpressure");
@@ -84,7 +88,7 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h05);
         send_byte(8'h05);
         send_byte(8'h02);
@@ -92,8 +96,8 @@ module graphics_command_stream_decoder_tb;
         send_byte(8'h03);
         send_byte(8'h00);
         send_byte(8'h01);
-        send_byte(8'hFA);
-        send_byte(8'h0F);
+        send_byte(8'h32);
+        send_byte(8'h7A);
         wait (command_valid);
         if (command_data.opcode != GFX_CMD_DEFINE_MESH ||
             `GFX_MESH_HANDLE(command_data) != 8'd2 ||
@@ -104,7 +108,7 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h08);
         send_byte(8'h19);
         send_byte(8'h02);
@@ -120,7 +124,7 @@ module graphics_command_stream_decoder_tb;
         send_byte(8'h00); send_byte(8'h00);
         send_byte(8'h01); send_byte(8'h00);
         send_byte(8'h00); send_byte(8'h00);
-        send_byte(8'h88); send_byte(8'h1C);
+        send_byte(8'hE5); send_byte(8'hA0);
         wait (command_valid);
         if (command_data.opcode != GFX_CMD_DRAW_MESH ||
             `GFX_DRAW_MESH_HANDLE(command_data) != 8'd2 ||
@@ -133,15 +137,15 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h01);
         send_byte(8'h04);
         send_byte(8'h12);
         send_byte(8'h34);
         send_byte(8'h56);
         send_byte(8'h78);
-        send_byte(8'h40);
-        send_byte(8'hF0);
+        send_byte(8'h98);
+        send_byte(8'h72);
         wait (command_valid);
         if (command_data.opcode != GFX_CMD_BEGIN_FRAME ||
             `GFX_ARGUMENT(command_data) != 32'h12345678)
@@ -150,15 +154,15 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h04);
         send_byte(8'h04);
         send_byte(8'h07);
         send_byte(8'hA1);
         send_byte(8'hB2);
         send_byte(8'hC3);
-        send_byte(8'hFD);
-        send_byte(8'h1C);
+        send_byte(8'h25);
+        send_byte(8'h9E);
         wait (command_valid);
         if (command_data.opcode != GFX_CMD_SET_PALETTE ||
             `GFX_ARGUMENT(command_data) != 32'h07A1B2C3)
@@ -167,7 +171,7 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h02);
         send_byte(8'h13);
         send_byte(8'h01);
@@ -189,8 +193,8 @@ module graphics_command_stream_decoder_tb;
         send_byte(8'h00);
         send_byte(8'h00);
         send_byte(8'h2F);
-        send_byte(8'h58);
-        send_byte(8'hD8);
+        send_byte(8'hEE);
+        send_byte(8'hB0);
         wait (command_valid);
         if (command_data.opcode != GFX_CMD_DRAW_TRIANGLE ||
             decoded_triangle.x0 != 16'sh0100 ||
@@ -201,7 +205,7 @@ module graphics_command_stream_decoder_tb;
             $fatal(1, "triangle frame decoded incorrectly");
         accept_command();
 
-        send_byte(8'h47); send_byte(8'h46); send_byte(8'h01);
+        send_byte(8'h47); send_byte(8'h46); send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h09); send_byte(8'h0F);
         send_byte(8'h02); send_byte(8'h04); send_byte(8'h02);
         send_byte(8'h01); send_byte(8'h00);
@@ -210,7 +214,7 @@ module graphics_command_stream_decoder_tb;
         send_byte(8'hFF); send_byte(8'h00);
         send_byte(8'h00); send_byte(8'h00);
         send_byte(8'h00); send_byte(8'h80);
-        send_byte(8'h12); send_byte(8'h66);
+        send_byte(8'h12); send_byte(8'h14);
         wait (command_valid);
         @(negedge clk);
         if (command_data.opcode != GFX_CMD_UPLOAD_VERTEX ||
@@ -228,12 +232,12 @@ module graphics_command_stream_decoder_tb;
             $fatal(1, "second bulk vertex decoded incorrectly");
         accept_command();
 
-        send_byte(8'h47); send_byte(8'h46); send_byte(8'h01);
+        send_byte(8'h47); send_byte(8'h46); send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h0A); send_byte(8'h0C);
         send_byte(8'h02); send_byte(8'h00); send_byte(8'h07); send_byte(8'h02);
         send_byte(8'h02); send_byte(8'h00); send_byte(8'h01); send_byte(8'hA5);
         send_byte(8'h01); send_byte(8'h02); send_byte(8'h00); send_byte(8'hB6);
-        send_byte(8'hFC); send_byte(8'hFC);
+        send_byte(8'h1F); send_byte(8'hD9);
         wait (command_valid);
         @(negedge clk);
         if (command_data.opcode != GFX_CMD_UPLOAD_INDEX ||
@@ -253,7 +257,7 @@ module graphics_command_stream_decoder_tb;
 
         send_byte(8'h47);
         send_byte(8'h46);
-        send_byte(8'h01);
+        send_byte(`GFX_COMMAND_VERSION);
         send_byte(8'h03);
         send_byte(8'h00);
         send_byte(8'h4C);

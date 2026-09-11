@@ -25,7 +25,7 @@ void setPalette(CommandStream& commands) {
         commands.setPalette(static_cast<std::uint8_t>(index + 1), colors[index]);
 }
 
-void checkUpload(const RendererStatus& status, std::size_t handle) {
+void checkUpload(const PacketAcknowledgement& status, std::size_t handle) {
     if ((status.flags & StatusAccepted) == 0 ||
         (status.flags & ~(StatusAccepted | StatusDuplicate)) != 0)
         throw std::runtime_error("FPGA rejected mesh handle " +
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
 
         RendererClient renderer(options.address, options.port);
         for (std::size_t handle = 0; handle < chunks.size(); ++handle) {
-            const RendererStatus status = renderer.uploadMesh(
+            const PacketAcknowledgement status = renderer.uploadMesh(
                 static_cast<std::uint8_t>(handle), chunks[handle]);
             checkUpload(status, handle);
             std::cout << "Uploaded handle " << handle << " with "
@@ -111,9 +111,13 @@ int main(int argc, char** argv) {
                 phase += elapsedSeconds * 0.65F;
 
             CommandStream frame;
-            if (framesRendered == 0)
+            if (framesRendered == 0) {
                 setPalette(frame);
-            frame.setRotation(0);
+                constexpr float defaultViewPitch = -0.490873852F;
+                frame.setViewMatrix(Mat4::translation(0.0F, 0.0F, 5.0F) *
+                                    Mat4::rotationX(defaultViewPitch));
+                frame.setProjection({});
+            }
             frame.beginFrame(frameId++);
             for (std::size_t instance = 0; instance < instanceCount; ++instance) {
                 const float centeredInstance = static_cast<float>(instance) -
@@ -133,7 +137,7 @@ int main(int argc, char** argv) {
             }
             frame.endFrame();
 
-            const RendererStatus status = renderer.submit(frame);
+            const FrameResult status = renderer.submit(frame);
             if (status.flags != 0)
                 throw std::runtime_error("frame " + std::to_string(status.frameId) +
                                          " returned FPGA status " +
@@ -146,12 +150,16 @@ int main(int argc, char** argv) {
                 reportNow - reportStart).count();
             if (reportSeconds >= 1.0F) {
                 const float framesPerSecond = reportFrames / reportSeconds;
-                const std::size_t packets = (frame.bytes().size() + 1387) / 1388;
+                constexpr std::size_t chunkBytes = protocol::maximumDatagramBytes -
+                                                   protocol::transportHeaderBytes;
+                const std::size_t packets =
+                    (frame.bytes().size() + chunkBytes - 1) / chunkBytes;
                 std::cout << '\r' << "Frame " << status.frameId << " | "
                           << std::fixed << std::setprecision(1) << framesPerSecond
                           << " FPS | " << frame.bytes().size() << " bytes | "
                           << packets << " packet(s) | FIFO free " << status.fifoFree
-                          << "      " << std::flush;
+                          << "      \n" << formatFrameStatistics(status.statistics)
+                          << "\n" << std::flush;
                 reportStart = reportNow;
                 reportFrames = 0;
             }

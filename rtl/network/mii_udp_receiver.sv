@@ -1,7 +1,9 @@
+`include "protocol_generated.svh"
+
 module mii_udp_receiver #(
     parameter logic [47:0] LOCAL_MAC = 48'h020000000001,
     parameter logic [31:0] LOCAL_IP = 32'hC0A80702,
-    parameter logic [15:0] LOCAL_PORT = 16'd4000
+    parameter logic [15:0] LOCAL_PORT = `GFX_DEFAULT_UDP_PORT
 ) (
     input logic rx_clk,
     input logic reset,
@@ -26,13 +28,6 @@ module mii_udp_receiver #(
     output logic [47:0] arp_sender_mac,
     output logic [31:0] arp_sender_ip
 );
-
-    localparam logic [31:0] STATUS_ACCEPTED = 32'h00000001;
-    localparam logic [31:0] STATUS_DUPLICATE = 32'h00000002;
-    localparam logic [31:0] STATUS_BUSY = 32'h00000004;
-    localparam logic [31:0] STATUS_SEQUENCE_ERROR = 32'h00000008;
-    localparam logic [31:0] STATUS_MALFORMED = 32'h00000010;
-    localparam logic [31:0] STATUS_OVERFLOW = 32'h00000020;
 
     logic nibble_high;
     logic [3:0] low_nibble;
@@ -142,9 +137,10 @@ module mii_udp_receiver #(
             if (byte_index >= 11'd42 && udp_selected && udp_payload_remaining != 0) begin
                 udp_payload_remaining <= udp_payload_remaining - 1'b1;
                 case (transport_offset)
-                    16'd0: transport_magic_g <= value == 8'h47;
-                    16'd1: transport_magic_ok <= transport_magic_g && value == 8'h50;
-                    16'd2: transport_version_ok <= value == 8'h01;
+                    16'd0: transport_magic_g <= value == `GFX_TRANSPORT_MAGIC_0;
+                    16'd1: transport_magic_ok <= transport_magic_g &&
+                                                          value == `GFX_TRANSPORT_MAGIC_1;
+                    16'd2: transport_version_ok <= value == `GFX_TRANSPORT_VERSION;
                     16'd3: transport_flags <= value;
                     16'd4, 16'd5, 16'd6, 16'd7:
                         transport_frame_id <= {transport_frame_id[23:0], value};
@@ -156,7 +152,8 @@ module mii_udp_receiver #(
                         transport_length[7:0] <= value;
                         transport_payload_remaining <= declared_length;
                         transport_header_valid <= transport_magic_ok && transport_version_ok &&
-                            udp_payload_length == declared_length + 16'd12;
+                            udp_payload_length == declared_length +
+                                                  `GFX_TRANSPORT_HEADER_BYTES;
                         duplicate_packet = sequence_active &&
                             transport_frame_id == active_transport_frame &&
                             transport_sequence == last_sequence;
@@ -166,17 +163,19 @@ module mii_udp_receiver #(
                             (sequence_active && transport_frame_id == active_transport_frame &&
                              transport_sequence == expected_sequence);
                         if (!transport_magic_ok || !transport_version_ok ||
-                            udp_payload_length != declared_length + 16'd12) begin
-                            transport_result <= STATUS_MALFORMED;
+                            udp_payload_length != declared_length +
+                                                  `GFX_TRANSPORT_HEADER_BYTES) begin
+                            transport_result <= `GFX_STATUS_MALFORMED;
                         end else if (duplicate_packet) begin
-                            transport_result <= STATUS_ACCEPTED | STATUS_DUPLICATE;
+                            transport_result <= `GFX_STATUS_ACCEPTED |
+                                                `GFX_STATUS_DUPLICATE;
                         end else if (!sequence_valid) begin
-                            transport_result <= STATUS_SEQUENCE_ERROR;
+                            transport_result <= `GFX_STATUS_SEQUENCE_ERROR;
                         end else if (declared_length > fifo_free) begin
-                            transport_result <= STATUS_BUSY;
+                            transport_result <= `GFX_STATUS_BUSY;
                         end else begin
                             transport_accept <= 1'b1;
-                            transport_result <= STATUS_ACCEPTED;
+                            transport_result <= `GFX_STATUS_ACCEPTED;
                         end
                     end
                     default: begin
@@ -331,9 +330,9 @@ module mii_udp_receiver #(
                         packet_status_flags <= transport_result;
                         if (frame_error || !transport_header_valid ||
                             transport_payload_remaining != 0) begin
-                            packet_status_flags <= STATUS_MALFORMED;
+                            packet_status_flags <= `GFX_STATUS_MALFORMED;
                         end else if (transport_overflow) begin
-                            packet_status_flags <= STATUS_OVERFLOW;
+                            packet_status_flags <= `GFX_STATUS_OVERFLOW;
                         end else if (transport_accept) begin
                             sequence_active <= 1'b1;
                             active_transport_frame <= transport_frame_id;

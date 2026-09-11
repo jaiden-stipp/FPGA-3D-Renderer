@@ -1,14 +1,18 @@
+`include "renderer_types.svh"
+
 module mii_response_transmitter #(
     parameter logic [47:0] LOCAL_MAC = 48'h020000000001,
     parameter logic [31:0] LOCAL_IP = 32'hC0A80702,
-    parameter logic [15:0] LOCAL_PORT = 16'd4000
+    parameter logic [15:0] LOCAL_PORT = `GFX_DEFAULT_UDP_PORT
 ) (
     input logic tx_clk,
     input logic reset,
-    input logic arp_toggle,
+    input logic arp_valid,
+    output logic arp_ready,
     input logic [47:0] arp_mac,
     input logic [31:0] arp_ip,
-    input logic packet_toggle,
+    input logic packet_valid,
+    output logic packet_ready,
     input logic [47:0] packet_mac,
     input logic [31:0] packet_ip,
     input logic [15:0] packet_port,
@@ -16,10 +20,12 @@ module mii_response_transmitter #(
     input logic [15:0] packet_sequence,
     input logic [11:0] packet_fifo_free,
     input logic [31:0] packet_flags,
-    input logic frame_toggle,
+    input logic frame_valid,
+    output logic frame_ready,
     input logic [31:0] frame_id,
     input logic [11:0] frame_fifo_free,
     input logic [31:0] frame_flags,
+    input renderer_stats_t frame_statistics,
     output logic [3:0] tx_data,
     output logic tx_en,
     output logic tx_er
@@ -39,15 +45,6 @@ module mii_response_transmitter #(
 
     tx_state_t state;
     response_kind_t response_kind;
-    logic arp_sync1;
-    logic arp_sync2;
-    logic arp_seen;
-    logic packet_sync1;
-    logic packet_sync2;
-    logic packet_seen;
-    logic frame_sync1;
-    logic frame_sync2;
-    logic frame_seen;
     logic [47:0] target_mac;
     logic [31:0] target_ip;
     logic [15:0] target_port;
@@ -59,6 +56,7 @@ module mii_response_transmitter #(
     logic [15:0] status_sequence;
     logic [11:0] status_fifo_free;
     logic [31:0] status_flags;
+    renderer_stats_t status_statistics;
     logic [6:0] byte_index;
     logic [6:0] data_end_index;
     logic [6:0] fcs_start_index;
@@ -68,6 +66,8 @@ module mii_response_transmitter #(
     logic [31:0] crc;
     logic [7:0] current_byte;
     logic [15:0] ip_checksum;
+    logic [15:0] ip_total_length;
+    logic [15:0] udp_length;
 
     function automatic logic [31:0] crc32_byte(
         input logic [31:0] crc_in,
@@ -89,11 +89,12 @@ module mii_response_transmitter #(
 
     function automatic logic [15:0] ipv4_checksum(
         input logic [15:0] identification,
-        input logic [31:0] destination
+        input logic [31:0] destination,
+        input logic [15:0] total_length
     );
         logic [19:0] sum;
         begin
-            sum = 20'h04500 + 20'h00030 + identification + 20'h04000 +
+            sum = 20'h04500 + total_length + identification + 20'h04000 +
                   20'h04011 + LOCAL_IP[31:16] + LOCAL_IP[15:0] +
                   destination[31:16] + destination[15:0];
             sum = sum[15:0] + sum[19:16];
@@ -103,10 +104,21 @@ module mii_response_transmitter #(
     endfunction
 
     always_comb begin
-        data_end_index = response_kind == RESPONSE_ARP ? 7'd67 : 7'd69;
+        arp_ready = state == IDLE;
+        packet_ready = state == IDLE && !arp_valid;
+        frame_ready = state == IDLE && !arp_valid && !packet_valid;
+        if (response_kind == RESPONSE_ARP)
+            data_end_index = 7'd67;
+        else if (response_kind == RESPONSE_FRAME)
+            data_end_index = 7'd117;
+        else
+            data_end_index = 7'd69;
         fcs_start_index = data_end_index + 1'b1;
         final_index = fcs_start_index + 7'd3;
-        ip_checksum = ipv4_checksum(status_frame_id[15:0], target_ip);
+        ip_total_length = response_kind == RESPONSE_FRAME ? 16'h0060 : 16'h0030;
+        udp_length = response_kind == RESPONSE_FRAME ? 16'h004C : 16'h001C;
+        ip_checksum = ipv4_checksum(status_frame_id[15:0], target_ip,
+                                    ip_total_length);
         current_byte = 8'h00;
 
         if (byte_index <= 7'd6)
@@ -157,8 +169,8 @@ module mii_response_transmitter #(
                 7'd21: current_byte = 8'h00;
                 7'd22: current_byte = 8'h45;
                 7'd23: current_byte = 8'h00;
-                7'd24: current_byte = 8'h00;
-                7'd25: current_byte = 8'h30;
+                7'd24: current_byte = ip_total_length[15:8];
+                7'd25: current_byte = ip_total_length[7:0];
                 7'd26: current_byte = status_frame_id[15:8];
                 7'd27: current_byte = status_frame_id[7:0];
                 7'd28: current_byte = 8'h40;
@@ -179,14 +191,16 @@ module mii_response_transmitter #(
                 7'd43: current_byte = LOCAL_PORT[7:0];
                 7'd44: current_byte = target_port[15:8];
                 7'd45: current_byte = target_port[7:0];
-                7'd46: current_byte = 8'h00;
-                7'd47: current_byte = 8'h1C;
+                7'd46: current_byte = udp_length[15:8];
+                7'd47: current_byte = udp_length[7:0];
                 7'd48: current_byte = 8'h00;
                 7'd49: current_byte = 8'h00;
-                7'd50: current_byte = 8'h47;
-                7'd51: current_byte = 8'h53;
-                7'd52: current_byte = 8'h01;
-                7'd53: current_byte = response_kind == RESPONSE_PACKET ? 8'h01 : 8'h02;
+                7'd50: current_byte = `GFX_STATUS_MAGIC_0;
+                7'd51: current_byte = `GFX_STATUS_MAGIC_1;
+                7'd52: current_byte = `GFX_STATUS_VERSION;
+                7'd53: current_byte = response_kind == RESPONSE_PACKET ?
+                    `GFX_STATUS_EVENT_PACKET_ACKNOWLEDGED :
+                    `GFX_STATUS_EVENT_FRAME_DISPLAYED;
                 7'd54: current_byte = status_frame_id[31:24];
                 7'd55: current_byte = status_frame_id[23:16];
                 7'd56: current_byte = status_frame_id[15:8];
@@ -199,6 +213,58 @@ module mii_response_transmitter #(
                 7'd63: current_byte = status_flags[23:16];
                 7'd64: current_byte = status_flags[15:8];
                 7'd65: current_byte = status_flags[7:0];
+                7'd66: current_byte = status_statistics.triangles_submitted[31:24];
+                7'd67: current_byte = status_statistics.triangles_submitted[23:16];
+                7'd68: current_byte = status_statistics.triangles_submitted[15:8];
+                7'd69: current_byte = status_statistics.triangles_submitted[7:0];
+                7'd70: current_byte = status_statistics.triangles_clipped[31:24];
+                7'd71: current_byte = status_statistics.triangles_clipped[23:16];
+                7'd72: current_byte = status_statistics.triangles_clipped[15:8];
+                7'd73: current_byte = status_statistics.triangles_clipped[7:0];
+                7'd74: current_byte = status_statistics.triangles_culled[31:24];
+                7'd75: current_byte = status_statistics.triangles_culled[23:16];
+                7'd76: current_byte = status_statistics.triangles_culled[15:8];
+                7'd77: current_byte = status_statistics.triangles_culled[7:0];
+                7'd78: current_byte = status_statistics.bounding_box_pixels[31:24];
+                7'd79: current_byte = status_statistics.bounding_box_pixels[23:16];
+                7'd80: current_byte = status_statistics.bounding_box_pixels[15:8];
+                7'd81: current_byte = status_statistics.bounding_box_pixels[7:0];
+                7'd82: current_byte = status_statistics.pixels_inside[31:24];
+                7'd83: current_byte = status_statistics.pixels_inside[23:16];
+                7'd84: current_byte = status_statistics.pixels_inside[15:8];
+                7'd85: current_byte = status_statistics.pixels_inside[7:0];
+                7'd86: current_byte = status_statistics.depth_rejected[31:24];
+                7'd87: current_byte = status_statistics.depth_rejected[23:16];
+                7'd88: current_byte = status_statistics.depth_rejected[15:8];
+                7'd89: current_byte = status_statistics.depth_rejected[7:0];
+                7'd90: current_byte = status_statistics.pixels_written[31:24];
+                7'd91: current_byte = status_statistics.pixels_written[23:16];
+                7'd92: current_byte = status_statistics.pixels_written[15:8];
+                7'd93: current_byte = status_statistics.pixels_written[7:0];
+                7'd94: current_byte = status_statistics.geometry_cycles[31:24];
+                7'd95: current_byte = status_statistics.geometry_cycles[23:16];
+                7'd96: current_byte = status_statistics.geometry_cycles[15:8];
+                7'd97: current_byte = status_statistics.geometry_cycles[7:0];
+                7'd98: current_byte = status_statistics.geometry_stall_cycles[31:24];
+                7'd99: current_byte = status_statistics.geometry_stall_cycles[23:16];
+                7'd100: current_byte = status_statistics.geometry_stall_cycles[15:8];
+                7'd101: current_byte = status_statistics.geometry_stall_cycles[7:0];
+                7'd102: current_byte = status_statistics.raster_cycles[31:24];
+                7'd103: current_byte = status_statistics.raster_cycles[23:16];
+                7'd104: current_byte = status_statistics.raster_cycles[15:8];
+                7'd105: current_byte = status_statistics.raster_cycles[7:0];
+                7'd106: current_byte = status_statistics.clear_cycles[31:24];
+                7'd107: current_byte = status_statistics.clear_cycles[23:16];
+                7'd108: current_byte = status_statistics.clear_cycles[15:8];
+                7'd109: current_byte = status_statistics.clear_cycles[7:0];
+                7'd110: current_byte = status_statistics.total_cycles[31:24];
+                7'd111: current_byte = status_statistics.total_cycles[23:16];
+                7'd112: current_byte = status_statistics.total_cycles[15:8];
+                7'd113: current_byte = status_statistics.total_cycles[7:0];
+                7'd114: current_byte = status_statistics.swap_wait_cycles[31:24];
+                7'd115: current_byte = status_statistics.swap_wait_cycles[23:16];
+                7'd116: current_byte = status_statistics.swap_wait_cycles[15:8];
+                7'd117: current_byte = status_statistics.swap_wait_cycles[7:0];
                 default: current_byte = 8'h00;
             endcase
         end
@@ -220,15 +286,6 @@ module mii_response_transmitter #(
         if (reset) begin
             state <= IDLE;
             response_kind <= RESPONSE_ARP;
-            arp_sync1 <= 1'b0;
-            arp_sync2 <= 1'b0;
-            arp_seen <= 1'b0;
-            packet_sync1 <= 1'b0;
-            packet_sync2 <= 1'b0;
-            packet_seen <= 1'b0;
-            frame_sync1 <= 1'b0;
-            frame_sync2 <= 1'b0;
-            frame_seen <= 1'b0;
             target_mac <= '0;
             target_ip <= '0;
             target_port <= '0;
@@ -240,22 +297,15 @@ module mii_response_transmitter #(
             status_sequence <= '0;
             status_fifo_free <= '0;
             status_flags <= '0;
+            status_statistics <= '0;
             byte_index <= '0;
             high_nibble <= 1'b0;
             gap_count <= '0;
             crc <= 32'hFFFFFFFF;
         end else begin
-            arp_sync1 <= arp_toggle;
-            arp_sync2 <= arp_sync1;
-            packet_sync1 <= packet_toggle;
-            packet_sync2 <= packet_sync1;
-            frame_sync1 <= frame_toggle;
-            frame_sync2 <= frame_sync1;
-
             case (state)
                 IDLE: begin
-                    if (arp_sync2 != arp_seen) begin
-                        arp_seen <= arp_sync2;
+                    if (arp_valid) begin
                         response_kind <= RESPONSE_ARP;
                         target_mac <= arp_mac;
                         target_ip <= arp_ip;
@@ -263,8 +313,7 @@ module mii_response_transmitter #(
                         high_nibble <= 1'b0;
                         crc <= 32'hFFFFFFFF;
                         state <= SEND;
-                    end else if (packet_sync2 != packet_seen) begin
-                        packet_seen <= packet_sync2;
+                    end else if (packet_valid) begin
                         response_kind <= RESPONSE_PACKET;
                         target_mac <= packet_mac;
                         target_ip <= packet_ip;
@@ -277,12 +326,12 @@ module mii_response_transmitter #(
                         status_sequence <= packet_sequence;
                         status_fifo_free <= packet_fifo_free;
                         status_flags <= packet_flags;
+                        status_statistics <= '0;
                         byte_index <= '0;
                         high_nibble <= 1'b0;
                         crc <= 32'hFFFFFFFF;
                         state <= SEND;
-                    end else if (frame_sync2 != frame_seen) begin
-                        frame_seen <= frame_sync2;
+                    end else if (frame_valid) begin
                         response_kind <= RESPONSE_FRAME;
                         target_mac <= last_peer_mac;
                         target_ip <= last_peer_ip;
@@ -291,6 +340,7 @@ module mii_response_transmitter #(
                         status_sequence <= last_packet_sequence;
                         status_fifo_free <= frame_fifo_free;
                         status_flags <= frame_flags;
+                        status_statistics <= frame_statistics;
                         byte_index <= '0;
                         high_nibble <= 1'b0;
                         crc <= 32'hFFFFFFFF;

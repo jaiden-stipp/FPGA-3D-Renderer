@@ -5,7 +5,7 @@
 module transform_3d_tb;
     logic clk;
     logic reset;
-    logic [7:0] rotation_angle;
+    projection_config_t projection;
     triangle_3d_t in_data;
     logic in_valid;
     logic in_ready;
@@ -19,14 +19,16 @@ module transform_3d_tb;
     ) dut (
         .clk(clk),
         .reset(reset),
-        .rotation_angle(rotation_angle),
+        .projection(projection),
         .in_data(in_data),
         .in_valid(in_valid),
         .in_ready(in_ready),
         .out_data(out_data),
         .out_valid(out_valid),
         .out_ready(out_ready),
-        .busy(busy)
+        .busy(busy),
+        .triangle_clipped(),
+        .triangle_culled()
     );
 
     always #1 clk = ~clk;
@@ -34,20 +36,20 @@ module transform_3d_tb;
     initial begin
         clk = 1'b0;
         reset = 1'b1;
-        rotation_angle = 8'd64;
+        projection = '{16'sd256, 16'sd256, 16'sd160, 16'sd120, 16'sd512};
         in_valid = 1'b0;
         out_ready = 1'b1;
         in_data = '0;
 
         in_data.x0 = 16'shFF00;
         in_data.y0 = 16'shFF00;
-        in_data.z0 = 16'sh0100;
+        in_data.z0 = 16'sh0400;
         in_data.x1 = 16'sh0100;
         in_data.y1 = 16'shFF00;
-        in_data.z1 = 16'sh0100;
+        in_data.z1 = 16'sh0400;
         in_data.x2 = 16'sh0100;
         in_data.y2 = 16'sh0100;
-        in_data.z2 = 16'sh0100;
+        in_data.z2 = 16'sh0400;
         in_data.color = 8'hE0;
 
         repeat (2) @(posedge clk);
@@ -63,16 +65,16 @@ module transform_3d_tb;
         while (!out_valid)
             @(posedge clk);
 
-        if (out_data.x0 < 10'd196 || out_data.x0 > 10'd202)
+        if (out_data.x0 < 10'd95 || out_data.x0 > 10'd97)
             $fatal(1, "unexpected projected x0: %0d", out_data.x0);
-        if (out_data.y0 < 10'd136 || out_data.y0 > 10'd144)
+        if (out_data.y0 < 10'd183 || out_data.y0 > 10'd185)
             $fatal(1, "unexpected projected y0: %0d", out_data.y0);
-        if (out_data.x1 < 10'd212 || out_data.x1 > 10'd218)
+        if (out_data.x1 < 10'd223 || out_data.x1 > 10'd225)
             $fatal(1, "unexpected projected x1: %0d", out_data.x1);
-        if (out_data.y2 < 10'd82 || out_data.y2 > 10'd90)
+        if (out_data.y2 < 10'd55 || out_data.y2 > 10'd57)
             $fatal(1, "unexpected projected y2: %0d", out_data.y2);
-        if ((out_data.z0 != 8'd40) || (out_data.z1 != 8'd56) ||
-            (out_data.z2 != 8'd68))
+        if ((out_data.z0 != 8'd64) || (out_data.z1 != 8'd64) ||
+            (out_data.z2 != 8'd64))
             $fatal(1, "unexpected inverse depth");
         if (out_data.color != 8'hE0)
             $fatal(1, "color was not carried through");

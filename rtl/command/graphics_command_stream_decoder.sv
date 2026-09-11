@@ -127,7 +127,7 @@ module graphics_command_stream_decoder (
             end else if (state == BULK_READ_WAIT) begin
                 state <= BULK_READ_CAPTURE;
             end else if (state == BULK_READ_CAPTURE) begin
-                if (opcode_byte == 8'd9) begin
+                if (opcode_byte == `GFX_WIRE_CMD_UPLOAD_VERTICES) begin
                     case (bulk_byte_index)
                         3'd0: decoded_command.payload[47:40] <= bulk_read_data;
                         3'd1: decoded_command.payload[39:32] <= bulk_read_data;
@@ -161,7 +161,7 @@ module graphics_command_stream_decoder (
             end else if (byte_valid && byte_ready) begin
                 case (state)
                     SYNC_G: begin
-                        if (byte_data == 8'h47) begin
+                        if (byte_data == `GFX_COMMAND_MAGIC_0) begin
                             decoded_command <= '0;
                             crc <= crc16_byte(16'hFFFF, byte_data);
                             state <= SYNC_F;
@@ -169,10 +169,10 @@ module graphics_command_stream_decoder (
                     end
 
                     SYNC_F: begin
-                        if (byte_data == 8'h46) begin
+                        if (byte_data == `GFX_COMMAND_MAGIC_1) begin
                             crc <= crc16_byte(crc, byte_data);
                             state <= VERSION;
-                        end else if (byte_data == 8'h47) begin
+                        end else if (byte_data == `GFX_COMMAND_MAGIC_0) begin
                             crc <= crc16_byte(16'hFFFF, byte_data);
                         end else begin
                             state <= SYNC_G;
@@ -180,7 +180,7 @@ module graphics_command_stream_decoder (
                     end
 
                     VERSION: begin
-                        if (byte_data == 8'h01) begin
+                        if (byte_data == `GFX_COMMAND_VERSION) begin
                             crc <= crc16_byte(crc, byte_data);
                             state <= OPCODE;
                         end else begin
@@ -200,88 +200,79 @@ module graphics_command_stream_decoder (
                         payload_length <= byte_data;
                         payload_index <= '0;
                         case (opcode_byte)
-                            8'd0: begin
-                                decoded_command.opcode <= GFX_CMD_SET_ROTATION;
-                                if (byte_data == 8'd1)
-                                    state <= PAYLOAD;
-                                else begin
-                                    decoder_error <= 1'b1;
-                                    state <= SYNC_G;
-                                end
-                            end
-                            8'd1: begin
+                            `GFX_WIRE_CMD_BEGIN_FRAME: begin
                                 decoded_command.opcode <= GFX_CMD_BEGIN_FRAME;
-                                if (byte_data == 8'd4)
+                                if (byte_data == `GFX_BEGIN_FRAME_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd2: begin
+                            `GFX_WIRE_CMD_DRAW_TRIANGLE: begin
                                 decoded_command.opcode <= GFX_CMD_DRAW_TRIANGLE;
-                                if (byte_data == 8'd19)
+                                if (byte_data == `GFX_DRAW_TRIANGLE_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd3: begin
+                            `GFX_WIRE_CMD_END_FRAME: begin
                                 decoded_command.opcode <= GFX_CMD_END_FRAME;
-                                if (byte_data == 8'd0)
+                                if (byte_data == `GFX_END_FRAME_PAYLOAD_BYTES)
                                     state <= CRC_HIGH;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd4: begin
+                            `GFX_WIRE_CMD_SET_PALETTE: begin
                                 decoded_command.opcode <= GFX_CMD_SET_PALETTE;
-                                if (byte_data == 8'd4)
+                                if (byte_data == `GFX_SET_PALETTE_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd5: begin
+                            `GFX_WIRE_CMD_DEFINE_MESH: begin
                                 decoded_command.opcode <= GFX_CMD_DEFINE_MESH;
-                                if (byte_data == 8'd5)
+                                if (byte_data == `GFX_DEFINE_MESH_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd6: begin
+                            `GFX_WIRE_CMD_UPLOAD_VERTEX: begin
                                 decoded_command.opcode <= GFX_CMD_UPLOAD_VERTEX;
-                                if (byte_data == 8'd8)
+                                if (byte_data == `GFX_UPLOAD_VERTEX_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd7: begin
+                            `GFX_WIRE_CMD_UPLOAD_INDEX: begin
                                 decoded_command.opcode <= GFX_CMD_UPLOAD_INDEX;
-                                if (byte_data == 8'd7)
+                                if (byte_data == `GFX_UPLOAD_INDEX_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd8: begin
+                            `GFX_WIRE_CMD_DRAW_MESH: begin
                                 decoded_command.opcode <= GFX_CMD_DRAW_MESH;
-                                if (byte_data == 8'd25)
+                                if (byte_data == `GFX_DRAW_MESH_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd9: begin
+                            `GFX_WIRE_CMD_UPLOAD_VERTICES: begin
                                 if (byte_data >= 8'd9)
                                     state <= PAYLOAD;
                                 else begin
@@ -289,8 +280,26 @@ module graphics_command_stream_decoder (
                                     state <= SYNC_G;
                                 end
                             end
-                            8'd10: begin
+                            `GFX_WIRE_CMD_UPLOAD_INDICES: begin
                                 if (byte_data >= 8'd8)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
+                            `GFX_WIRE_CMD_SET_VIEW_MATRIX: begin
+                                decoded_command.opcode <= GFX_CMD_SET_VIEW_MATRIX;
+                                if (byte_data == `GFX_SET_VIEW_MATRIX_PAYLOAD_BYTES)
+                                    state <= PAYLOAD;
+                                else begin
+                                    decoder_error <= 1'b1;
+                                    state <= SYNC_G;
+                                end
+                            end
+                            `GFX_WIRE_CMD_SET_PROJECTION: begin
+                                decoded_command.opcode <= GFX_CMD_SET_PROJECTION;
+                                if (byte_data == `GFX_SET_PROJECTION_PAYLOAD_BYTES)
                                     state <= PAYLOAD;
                                 else begin
                                     decoder_error <= 1'b1;
@@ -307,8 +316,7 @@ module graphics_command_stream_decoder (
                     PAYLOAD: begin
                         crc <= crc16_byte(crc, byte_data);
                         case (opcode_byte)
-                            8'd0: decoded_command.payload[7:0] <= byte_data;
-                            8'd1: begin
+                            `GFX_WIRE_CMD_BEGIN_FRAME: begin
                                 case (payload_index)
                                     8'd0: decoded_command.payload[31:24] <= byte_data;
                                     8'd1: decoded_command.payload[23:16] <= byte_data;
@@ -316,9 +324,9 @@ module graphics_command_stream_decoder (
                                     default: decoded_command.payload[7:0] <= byte_data;
                                 endcase
                             end
-                            8'd2: decoded_command.payload[
+                            `GFX_WIRE_CMD_DRAW_TRIANGLE: decoded_command.payload[
                                 151 - payload_index * 8 -: 8] <= byte_data;
-                            8'd4: begin
+                            `GFX_WIRE_CMD_SET_PALETTE: begin
                                 case (payload_index)
                                     8'd0: decoded_command.payload[31:24] <= byte_data;
                                     8'd1: decoded_command.payload[23:16] <= byte_data;
@@ -326,7 +334,7 @@ module graphics_command_stream_decoder (
                                     default: decoded_command.payload[7:0] <= byte_data;
                                 endcase
                             end
-                            8'd5: begin
+                            `GFX_WIRE_CMD_DEFINE_MESH: begin
                                 case (payload_index)
                                     8'd0: decoded_command.payload[135:128] <= byte_data;
                                     8'd1: decoded_command.payload[111:104] <= byte_data;
@@ -335,7 +343,7 @@ module graphics_command_stream_decoder (
                                     default: decoded_command.payload[87:80] <= byte_data;
                                 endcase
                             end
-                            8'd6: begin
+                            `GFX_WIRE_CMD_UPLOAD_VERTEX: begin
                                 case (payload_index)
                                     8'd0: decoded_command.payload[135:128] <= byte_data;
                                     8'd1: decoded_command.payload[119:112] <= byte_data;
@@ -347,7 +355,7 @@ module graphics_command_stream_decoder (
                                     default: decoded_command.payload[7:0] <= byte_data;
                                 endcase
                             end
-                            8'd7: begin
+                            `GFX_WIRE_CMD_UPLOAD_INDEX: begin
                                 case (payload_index)
                                     8'd0: decoded_command.payload[135:128] <= byte_data;
                                     8'd1: decoded_command.payload[127:120] <= byte_data;
@@ -358,9 +366,9 @@ module graphics_command_stream_decoder (
                                     default: decoded_command.payload[55:48] <= byte_data;
                                 endcase
                             end
-                            8'd8: decoded_command.payload[
+                            `GFX_WIRE_CMD_DRAW_MESH: decoded_command.payload[
                                 199 - payload_index * 8 -: 8] <= byte_data;
-                            8'd9: begin
+                            `GFX_WIRE_CMD_UPLOAD_VERTICES: begin
                                 bulk_payload[payload_index] <= byte_data;
                                 case (payload_index)
                                     8'd0: bulk_handle <= byte_data;
@@ -370,7 +378,7 @@ module graphics_command_stream_decoder (
                                     end
                                 endcase
                             end
-                            8'd10: begin
+                            `GFX_WIRE_CMD_UPLOAD_INDICES: begin
                                 bulk_payload[payload_index] <= byte_data;
                                 case (payload_index)
                                     8'd0: bulk_handle <= byte_data;
@@ -381,6 +389,12 @@ module graphics_command_stream_decoder (
                                     end
                                 endcase
                             end
+                            `GFX_WIRE_CMD_SET_VIEW_MATRIX:
+                                decoded_command.payload[
+                                    191 - payload_index * 8 -: 8] <= byte_data;
+                            `GFX_WIRE_CMD_SET_PROJECTION:
+                                decoded_command.payload[
+                                    79 - payload_index * 8 -: 8] <= byte_data;
                             default: begin
                             end
                         endcase
@@ -400,7 +414,7 @@ module graphics_command_stream_decoder (
                         if ({received_crc_high, byte_data} != crc) begin
                             decoder_error <= 1'b1;
                             state <= SYNC_G;
-                        end else if (opcode_byte == 8'd9) begin
+                        end else if (opcode_byte == `GFX_WIRE_CMD_UPLOAD_VERTICES) begin
                             if (bulk_record_count == 0 ||
                                 bulk_record_count > 8'd42 ||
                                 payload_length != 8'd3 + bulk_record_count * 8'd6 ||
@@ -418,7 +432,7 @@ module graphics_command_stream_decoder (
                                 `GFX_MESH_ELEMENT(decoded_command) <= bulk_start;
                                 state <= BULK_READ_WAIT;
                             end
-                        end else if (opcode_byte == 8'd10) begin
+                        end else if (opcode_byte == `GFX_WIRE_CMD_UPLOAD_INDICES) begin
                             if (bulk_record_count == 0 ||
                                 bulk_record_count > 8'd62 ||
                                 payload_length != 8'd4 + bulk_record_count * 8'd4 ||

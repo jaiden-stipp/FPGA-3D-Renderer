@@ -11,6 +11,7 @@ module graphics_command_processor (
     output logic command_error,
     output logic frame_done,
     output logic [31:0] frame_done_id,
+    output logic frame_start,
 
     input logic triangle_ready,
     input logic pipeline_idle,
@@ -40,7 +41,8 @@ module graphics_command_processor (
     output model_matrix_3x4_t mesh_draw_matrix,
     input logic mesh_draw_done,
     input logic mesh_draw_error,
-    output logic [7:0] rotation_angle,
+    output model_matrix_3x4_t view_matrix,
+    output projection_config_t projection,
     output logic palette_write,
     output logic [7:0] palette_address,
     output logic [23:0] palette_write_rgb,
@@ -61,6 +63,32 @@ module graphics_command_processor (
 
     command_state_t state;
     logic [31:0] active_frame_id;
+
+    function automatic model_matrix_3x4_t default_view_matrix();
+        model_matrix_3x4_t value;
+        begin
+            value = '0;
+            value.m00 = 16'sd256;
+            value.m11 = 16'sd226;
+            value.m12 = 16'sd121;
+            value.m21 = -16'sd121;
+            value.m22 = 16'sd226;
+            value.m23 = 16'sd1280;
+            default_view_matrix = value;
+        end
+    endfunction
+
+    function automatic projection_config_t default_projection();
+        projection_config_t value;
+        begin
+            value.focal_x = 16'sd256;
+            value.focal_y = 16'sd256;
+            value.center_x = 16'sd160;
+            value.center_y = 16'sd120;
+            value.near_z = 16'sd512;
+            default_projection = value;
+        end
+    endfunction
 
     always_comb begin
         command_ready = 1'b0;
@@ -116,28 +144,35 @@ module graphics_command_processor (
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
             state <= IDLE;
-            rotation_angle <= 8'd0;
+            view_matrix <= default_view_matrix();
+            projection <= default_projection();
             command_error <= 1'b0;
             frame_done <= 1'b0;
+            frame_start <= 1'b0;
             frame_done_id <= '0;
             active_frame_id <= '0;
         end else if (restart) begin
             state <= IDLE;
-            rotation_angle <= 8'd0;
+            view_matrix <= default_view_matrix();
+            projection <= default_projection();
             command_error <= 1'b0;
             frame_done <= 1'b0;
+            frame_start <= 1'b0;
             frame_done_id <= '0;
             active_frame_id <= '0;
         end else begin
             command_error <= 1'b0;
             frame_done <= 1'b0;
+            frame_start <= 1'b0;
 
             case (state)
                 IDLE: begin
                     if (command_valid && command_ready) begin
                         case (command_data.opcode)
-                            GFX_CMD_SET_ROTATION:
-                                rotation_angle <= command_data.payload[7:0];
+                            GFX_CMD_SET_VIEW_MATRIX:
+                                view_matrix <= `GFX_VIEW_MATRIX(command_data);
+                            GFX_CMD_SET_PROJECTION:
+                                projection <= `GFX_PROJECTION(command_data);
                             GFX_CMD_SET_PALETTE:
                                 state <= IDLE;
                             GFX_CMD_DEFINE_MESH,
@@ -148,6 +183,7 @@ module graphics_command_processor (
                             end
                             GFX_CMD_BEGIN_FRAME: begin
                                 active_frame_id <= `GFX_ARGUMENT(command_data);
+                                frame_start <= 1'b1;
                                 state <= CLEAR_START;
                             end
                             default:

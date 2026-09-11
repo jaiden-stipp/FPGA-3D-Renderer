@@ -10,6 +10,7 @@ module graphics_renderer_core (
     output logic command_error,
     output logic frame_done,
     output logic [31:0] frame_done_id,
+    output renderer_stats_t frame_statistics,
     output logic [7:0] VGA_R,
     output logic [7:0] VGA_G,
     output logic [7:0] VGA_B,
@@ -53,7 +54,9 @@ module graphics_renderer_core (
     logic swap_request;
     logic swap_busy;
     logic swap_done;
-    logic [7:0] rotation_angle;
+    model_matrix_3x4_t view_matrix;
+    projection_config_t projection;
+    logic frame_start;
     logic palette_write;
     logic [7:0] palette_address;
     logic [23:0] palette_write_rgb;
@@ -77,6 +80,7 @@ module graphics_renderer_core (
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_start(frame_start),
         .triangle_ready(direct_triangle_ready),
         .pipeline_idle(pipeline_idle),
         .clear_busy(clear_busy),
@@ -104,7 +108,8 @@ module graphics_renderer_core (
         .mesh_draw_matrix(mesh_draw_matrix),
         .mesh_draw_done(mesh_draw_done),
         .mesh_draw_error(mesh_draw_error),
-        .rotation_angle(rotation_angle),
+        .view_matrix(view_matrix),
+        .projection(projection),
         .palette_write(palette_write),
         .palette_address(palette_address),
         .palette_write_rgb(palette_write_rgb),
@@ -151,13 +156,16 @@ module graphics_renderer_core (
         .triangle_in_data(pipeline_triangle_data),
         .triangle_in_valid(pipeline_triangle_valid),
         .triangle_in_ready(pipeline_triangle_ready),
-        .rotation_angle(rotation_angle),
+        .view_matrix(view_matrix),
+        .projection(projection),
         .clear_request(clear_request),
         .clear_busy(clear_busy),
+        .frame_start(frame_start),
         .swap_request(swap_request),
         .swap_busy(swap_busy),
         .swap_done(swap_done),
         .pipeline_idle(pipeline_idle),
+        .frame_statistics(frame_statistics),
         .palette_write(palette_write),
         .palette_address(palette_address),
         .palette_write_rgb(palette_write_rgb),

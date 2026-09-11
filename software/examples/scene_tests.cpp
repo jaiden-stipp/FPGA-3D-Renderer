@@ -14,6 +14,13 @@ using namespace fpga_renderer;
 namespace {
 
 constexpr float pi = 3.14159265358979323846F;
+constexpr float defaultViewPitch = -20.0F * 2.0F * pi / 256.0F;
+
+void configureCamera(CommandStream& commands) {
+    commands.setViewMatrix(Mat4::translation(0.0F, 0.0F, 5.0F) *
+                           Mat4::rotationX(defaultViewPitch));
+    commands.setProjection({});
+}
 
 void setTestPalette(CommandStream& commands) {
     const Rgb colors[] = {
@@ -56,7 +63,7 @@ Mesh makeCube() {
 CommandStream makePaletteTest(std::uint32_t frameId) {
     CommandStream commands;
     setTestPalette(commands);
-    commands.setRotation(0);
+    configureCamera(commands);
     commands.beginFrame(frameId);
     Mesh tiles;
     for (int row = 0; row < 4; ++row) {
@@ -75,7 +82,7 @@ CommandStream makePaletteTest(std::uint32_t frameId) {
 CommandStream makeDepthTest(std::uint32_t frameId) {
     CommandStream commands;
     setTestPalette(commands);
-    commands.setRotation(0);
+    configureCamera(commands);
     commands.beginFrame(frameId);
     commands.drawTriangle({{-1.25F, -0.8F, -1.2F}, {0.0F, 1.3F, -1.2F},
                            {1.25F, -0.8F, -1.2F}, 4});
@@ -90,7 +97,7 @@ CommandStream makeDepthTest(std::uint32_t frameId) {
 CommandStream makeClippingTest(std::uint32_t frameId) {
     CommandStream commands;
     setTestPalette(commands);
-    commands.setRotation(0);
+    configureCamera(commands);
     commands.beginFrame(frameId);
     commands.drawTriangle({{-7.0F, -2.4F, 0.8F}, {0.0F, 3.8F, 0.8F},
                            {7.0F, -2.4F, 0.8F}, 8});
@@ -107,7 +114,7 @@ CommandStream makeClippingTest(std::uint32_t frameId) {
 CommandStream makeStressTest(std::uint32_t frameId) {
     CommandStream commands;
     setTestPalette(commands);
-    commands.setRotation(0);
+    configureCamera(commands);
     commands.beginFrame(frameId);
     Mesh surface;
     constexpr int columns = 16;
@@ -140,7 +147,7 @@ CommandStream makeStressTest(std::uint32_t frameId) {
 CommandStream makeOrbitFrame(std::uint32_t frameId, float phase) {
     CommandStream commands;
     setTestPalette(commands);
-    commands.setRotation(0);
+    configureCamera(commands);
     commands.beginFrame(frameId);
     const Mat4 center = Mat4::rotationY(phase) * Mat4::rotationX(phase * 0.45F) *
                         Mat4::scale(0.62F, 0.62F, 0.62F);
@@ -160,16 +167,20 @@ CommandStream makeOrbitFrame(std::uint32_t frameId, float phase) {
 
 void submitAndReport(RendererClient& renderer, const std::string& name,
                      const CommandStream& commands) {
-    const std::size_t packets = (commands.bytes().size() + 1387) / 1388;
+    constexpr std::size_t chunkBytes = protocol::maximumDatagramBytes -
+                                       protocol::transportHeaderBytes;
+    const std::size_t packets = (commands.bytes().size() + chunkBytes - 1) /
+                                chunkBytes;
     const auto start = std::chrono::steady_clock::now();
-    const RendererStatus status = renderer.submit(commands);
+    const FrameResult status = renderer.submit(commands);
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
     std::cout << name << ": frame " << status.frameId << ", "
               << commands.bytes().size() << " command bytes, " << packets
               << " packet(s), " << elapsed.count() << " ms, FIFO free "
               << status.fifoFree << ", flags 0x" << std::hex << status.flags
-              << std::dec << '\n';
+              << std::dec << '\n' << "  "
+              << formatFrameStatistics(status.statistics) << '\n';
     if (status.flags != 0)
         throw std::runtime_error(name + " returned an FPGA error status");
 }
@@ -215,7 +226,7 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::seconds(2));
         }
         if (test == "orbit" || test == "all") {
-            const RendererStatus upload = renderer.uploadMesh(0, makeCube());
+            const PacketAcknowledgement upload = renderer.uploadMesh(0, makeCube());
             std::cout << "uploaded cube mesh as handle 0; FIFO free "
                       << upload.fifoFree << ", flags 0x" << std::hex
                       << upload.flags << std::dec << '\n';

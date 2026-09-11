@@ -20,8 +20,16 @@ module renderer_tb;
     logic [9:0] depth_write_x;
     logic [8:0] depth_write_y;
     logic [7:0] depth_write_value;
+    logic renderer_busy;
+    logic bounding_box_pixel;
+    logic pixel_inside;
+    logic depth_rejected;
+    logic pixel_written;
     logic [7:0] depth_memory [0:255];
     integer write_count;
+    integer bounding_box_count;
+    integer inside_count;
+    integer rejected_count;
     integer index;
 
     renderer #(
@@ -45,7 +53,12 @@ module renderer_tb;
         .depth_write_enable(depth_write_enable),
         .depth_write_x(depth_write_x),
         .depth_write_y(depth_write_y),
-        .depth_write_value(depth_write_value)
+        .depth_write_value(depth_write_value),
+        .busy(renderer_busy),
+        .bounding_box_pixel(bounding_box_pixel),
+        .pixel_inside(pixel_inside),
+        .depth_rejected(depth_rejected),
+        .pixel_written(pixel_written)
     );
 
     always #5 clk = ~clk;
@@ -66,6 +79,12 @@ module renderer_tb;
     end
 
     always @(posedge clk) begin
+        if (bounding_box_pixel)
+            bounding_box_count = bounding_box_count + 1;
+        if (pixel_inside)
+            inside_count = inside_count + 1;
+        if (depth_rejected)
+            rejected_count = rejected_count + 1;
         if (raster_write) begin
             write_count = write_count + 1;
             if ((raster_x < 1) || (raster_x > 4) ||
@@ -112,6 +131,9 @@ module renderer_tb;
         triangle_valid = 1'b0;
         triangle_data = '0;
         write_count = 0;
+        bounding_box_count = 0;
+        inside_count = 0;
+        rejected_count = 0;
 
         repeat (2) @(posedge clk);
         reset = 1'b0;
@@ -132,6 +154,9 @@ module renderer_tb;
             $fatal(1, "closer triangle did not replace every pixel");
         if (depth_memory[17] != 8'd200)
             $fatal(1, "depth buffer did not retain the closer depth");
+        if (bounding_box_count != 48 || inside_count != 30 ||
+            rejected_count != 10)
+            $fatal(1, "raster event counters were incorrect");
 
         $display("renderer_tb PASS: Z-tested triangle writes work");
         $finish;

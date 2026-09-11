@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -36,8 +38,8 @@ std::uint8_t findVertex(std::vector<FixedVertex>& vertices,
     const auto found = indices.find(vertexKey(fixed));
     if (found != indices.end())
         return found->second;
-    if (vertices.size() >= 128)
-        throw std::length_error("mesh exceeds 128 unique vertices");
+    if (vertices.size() >= protocol::verticesPerMesh)
+        throw std::length_error("mesh exceeds the hardware vertex limit");
     const auto index = static_cast<std::uint8_t>(vertices.size());
     vertices.push_back(fixed);
     indices.emplace(vertexKey(fixed), index);
@@ -156,10 +158,39 @@ void CommandStream::clear() {
     frame_id_ = 0;
 }
 
-void CommandStream::setRotation(std::uint8_t angle) {
+void CommandStream::setViewMatrix(const Mat4& view) {
     if (frame_open_)
-        throw std::logic_error("rotation can only change between frames");
-    append(Opcode::SetRotation, {angle});
+        throw std::logic_error("view matrix can only change between frames");
+    constexpr float epsilon = 0.00001F;
+    if (std::abs(view.values[12]) > epsilon ||
+        std::abs(view.values[13]) > epsilon ||
+        std::abs(view.values[14]) > epsilon ||
+        std::abs(view.values[15] - 1.0F) > epsilon)
+        throw std::invalid_argument("hardware view transforms must be affine");
+    std::vector<std::uint8_t> payload;
+    payload.reserve(protocol::payloadBytes::setViewMatrix);
+    for (std::size_t row = 0; row < 3; ++row) {
+        for (std::size_t column = 0; column < 4; ++column)
+            appendFixed(payload, view.values[row * 4 + column]);
+    }
+    append(Opcode::SetViewMatrix, payload);
+}
+
+void CommandStream::setProjection(const Projection& projection) {
+    if (frame_open_)
+        throw std::logic_error("projection can only change between frames");
+    if (projection.focalX <= 0 || projection.focalY <= 0)
+        throw std::invalid_argument("projection focal lengths must be positive");
+    if (!std::isfinite(projection.nearPlane) || projection.nearPlane <= 0.0F)
+        throw std::invalid_argument("projection near plane must be positive");
+    std::vector<std::uint8_t> payload;
+    payload.reserve(protocol::payloadBytes::setProjection);
+    appendFixed(payload, projection.focalX);
+    appendFixed(payload, projection.focalY);
+    appendFixed(payload, projection.centerX);
+    appendFixed(payload, projection.centerY);
+    appendFixed(payload, toQ8_8(projection.nearPlane));
+    append(Opcode::SetProjection, payload);
 }
 
 void CommandStream::setPalette(std::uint8_t index, Rgb color) {
@@ -171,11 +202,11 @@ void CommandStream::setPalette(std::uint8_t index, Rgb color) {
 void CommandStream::uploadMesh(std::uint8_t handle, const Mesh& mesh) {
     if (frame_open_)
         throw std::logic_error("meshes can only be uploaded between frames");
-    if (handle >= 16)
+    if (handle >= protocol::meshHandleCount)
         throw std::out_of_range("mesh handle must be between 0 and 15");
     if (mesh.triangles().empty())
         throw std::invalid_argument("cannot upload an empty mesh");
-    if (mesh.triangles().size() > 256)
+    if (mesh.triangles().size() > protocol::trianglesPerMesh)
         throw std::length_error("mesh exceeds 256 triangles");
 
     struct IndexedTriangle {
@@ -187,8 +218,8 @@ void CommandStream::uploadMesh(std::uint8_t handle, const Mesh& mesh) {
     std::vector<FixedVertex> vertices;
     std::unordered_map<std::uint64_t, std::uint8_t> vertexIndices;
     std::vector<IndexedTriangle> triangles;
-    vertices.reserve(128);
-    vertexIndices.reserve(128);
+    vertices.reserve(protocol::verticesPerMesh);
+    vertexIndices.reserve(protocol::verticesPerMesh);
     triangles.reserve(mesh.triangles().size());
     for (const Triangle& triangle : mesh.triangles()) {
         triangles.push_back({findVertex(vertices, vertexIndices, triangle.v0),
@@ -254,7 +285,7 @@ void CommandStream::drawTriangle(const Triangle& triangle) {
     if (!frame_open_)
         throw std::logic_error("draw commands require an open frame");
     std::vector<std::uint8_t> payload;
-    payload.reserve(19);
+    payload.reserve(protocol::payloadBytes::drawTriangle);
     appendFixed(payload, triangle.v0.x);
     appendFixed(payload, triangle.v0.y);
     appendFixed(payload, triangle.v0.z);
@@ -282,7 +313,7 @@ void CommandStream::drawMesh(const Mesh& mesh, const Mat4& transform) {
 void CommandStream::drawMesh(std::uint8_t handle, const Mat4& transform) {
     if (!frame_open_)
         throw std::logic_error("draw commands require an open frame");
-    if (handle >= 16)
+    if (handle >= protocol::meshHandleCount)
         throw std::out_of_range("mesh handle must be between 0 and 15");
     constexpr float epsilon = 0.00001F;
     if (std::abs(transform.values[12]) > epsilon ||
@@ -292,7 +323,7 @@ void CommandStream::drawMesh(std::uint8_t handle, const Mat4& transform) {
         throw std::invalid_argument("hardware mesh transforms must be affine");
 
     std::vector<std::uint8_t> payload;
-    payload.reserve(25);
+    payload.reserve(protocol::payloadBytes::drawMesh);
     payload.push_back(handle);
     for (std::size_t row = 0; row < 3; ++row) {
         for (std::size_t column = 0; column < 4; ++column)
@@ -335,9 +366,9 @@ void CommandStream::append(Opcode opcode, const std::vector<std::uint8_t>& paylo
         throw std::length_error("command payload exceeds 255 bytes");
 
     const std::size_t start = bytes_.size();
-    bytes_.push_back(0x47);
-    bytes_.push_back(0x46);
-    bytes_.push_back(0x01);
+    bytes_.push_back(protocol::commandMagic0);
+    bytes_.push_back(protocol::commandMagic1);
+    bytes_.push_back(protocol::commandVersion);
     bytes_.push_back(static_cast<std::uint8_t>(opcode));
     bytes_.push_back(static_cast<std::uint8_t>(payload.size()));
     bytes_.insert(bytes_.end(), payload.begin(), payload.end());
@@ -363,6 +394,28 @@ std::uint16_t crc16Ccitt(const std::uint8_t* data, std::size_t size) {
                                  : static_cast<std::uint16_t>(crc << 1);
     }
     return crc;
+}
+
+std::string formatFrameStatistics(const FrameStatistics& stats) {
+    std::ostringstream output;
+    output << "triangles submitted " << stats.trianglesSubmitted
+           << ", clipped " << stats.trianglesClipped
+           << ", culled " << stats.trianglesCulled
+           << " | pixels tested " << stats.boundingBoxPixels
+           << ", inside " << stats.pixelsInside
+           << ", depth rejected " << stats.depthRejected
+           << ", written " << stats.pixelsWritten
+           << " | cycles geometry work " << stats.geometryCycles
+           << ", geometry stall " << stats.geometryStallCycles
+           << ", raster " << stats.rasterCycles
+           << ", clear " << stats.clearCycles
+           << ", total " << stats.totalCycles
+           << " | VGA swap wait " << stats.swapWaitCycles << " cycles ("
+           << std::fixed << std::setprecision(3)
+           << static_cast<double>(stats.swapWaitCycles) /
+                  (static_cast<double>(protocol::systemClockHz) / 1000.0)
+           << " ms)";
+    return output.str();
 }
 
 }

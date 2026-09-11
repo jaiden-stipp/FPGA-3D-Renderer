@@ -19,6 +19,7 @@ module ethernet_command_receiver_tb;
     logic command_error = 1'b0;
     logic frame_done = 1'b0;
     logic [31:0] frame_done_id = '0;
+    renderer_stats_t frame_statistics;
     logic decoder_error;
     logic receive_overflow;
     logic packet_seen;
@@ -45,6 +46,7 @@ module ethernet_command_receiver_tb;
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_statistics(frame_statistics),
         .decoder_error(decoder_error),
         .receive_overflow(receive_overflow),
         .packet_seen(packet_seen)
@@ -52,8 +54,8 @@ module ethernet_command_receiver_tb;
 
     always @(posedge system_clk) begin
         if (command_valid && command_ready) begin
-            if (command_data.opcode != GFX_CMD_SET_ROTATION ||
-                command_data.payload[7:0] != 8'h5A)
+            if (command_data.opcode != GFX_CMD_SET_PALETTE ||
+                `GFX_ARGUMENT(command_data) != 32'h07A1B2C3)
                 $fatal(1, "decoded graphics command is incorrect");
             command_count = command_count + 1;
         end
@@ -70,6 +72,7 @@ module ethernet_command_receiver_tb;
     endtask
 
     initial begin
+        frame_statistics = '0;
         repeat (3) @(posedge system_clk);
         reset = 1'b0;
 
@@ -80,18 +83,20 @@ module ethernet_command_receiver_tb;
         send_byte(8'h10); send_byte(8'h20); send_byte(8'h30);
         send_byte(8'h40); send_byte(8'h50); send_byte(8'h60);
         send_byte(8'h08); send_byte(8'h00);
-        send_byte(8'h45); send_byte(8'h00); send_byte(8'h00); send_byte(8'h30);
+        send_byte(8'h45); send_byte(8'h00); send_byte(8'h00); send_byte(8'h33);
         send_byte(8'h00); send_byte(8'h01); send_byte(8'h00); send_byte(8'h00);
         send_byte(8'h40); send_byte(8'h11); send_byte(8'h00); send_byte(8'h00);
         send_byte(8'hC0); send_byte(8'hA8); send_byte(8'h07); send_byte(8'h01);
         send_byte(8'hC0); send_byte(8'hA8); send_byte(8'h07); send_byte(8'h02);
         send_byte(8'h04); send_byte(8'hD2); send_byte(8'h0F); send_byte(8'hA0);
-        send_byte(8'h00); send_byte(8'h1C); send_byte(8'h00); send_byte(8'h00);
-        send_byte(8'h47); send_byte(8'h50); send_byte(8'h01); send_byte(8'h03);
+        send_byte(8'h00); send_byte(8'h1F); send_byte(8'h00); send_byte(8'h00);
+        send_byte(8'h47); send_byte(8'h50); send_byte(`GFX_TRANSPORT_VERSION); send_byte(8'h03);
         send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h01);
-        send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h08);
-        send_byte(8'h47); send_byte(8'h46); send_byte(8'h01); send_byte(8'h00);
-        send_byte(8'h01); send_byte(8'h5A); send_byte(8'hCE); send_byte(8'h96);
+        send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h0B);
+        send_byte(8'h47); send_byte(8'h46); send_byte(`GFX_COMMAND_VERSION);
+        send_byte(`GFX_WIRE_CMD_SET_PALETTE); send_byte(8'h04);
+        send_byte(8'h07); send_byte(8'hA1); send_byte(8'hB2); send_byte(8'hC3);
+        send_byte(8'h25); send_byte(8'h9E);
         @(negedge rx_clk);
         rx_dv = 1'b0;
 
@@ -109,12 +114,15 @@ module ethernet_command_receiver_tb;
         command_error = 1'b0;
         frame_done_id = 32'h12345678;
         frame_done = 1'b1;
+        #1;
+        if (dut.frame_queue_write_data[$bits(renderer_stats_t)+31 -: 32] !=
+            32'h00000200)
+            $fatal(1, "frame status did not capture the command error");
         @(posedge system_clk);
         @(negedge system_clk);
         frame_done = 1'b0;
-        if (dut.frame_status_id != 32'h12345678 ||
-            dut.frame_status_flags != 32'h00000200)
-            $fatal(1, "frame status did not capture the frame ID and command error");
+        if (receive_overflow)
+            $fatal(1, "frame response queue overflowed");
 
         $display("ethernet_command_receiver_tb PASS");
         $finish;

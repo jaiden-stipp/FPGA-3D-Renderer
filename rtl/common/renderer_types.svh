@@ -1,6 +1,8 @@
 `ifndef RENDERER_TYPES_SVH
 `define RENDERER_TYPES_SVH
 
+`include "protocol_generated.svh"
+
 typedef struct packed {
     logic [9:0] x0;
     logic [9:0] x1;
@@ -42,8 +44,31 @@ typedef struct packed {
     logic signed [15:0] m23;
 } model_matrix_3x4_t;
 
+typedef struct packed {
+    logic signed [15:0] focal_x;
+    logic signed [15:0] focal_y;
+    logic signed [15:0] center_x;
+    logic signed [15:0] center_y;
+    logic signed [15:0] near_z;
+} projection_config_t;
+
+typedef struct packed {
+    logic [31:0] triangles_submitted;
+    logic [31:0] triangles_clipped;
+    logic [31:0] triangles_culled;
+    logic [31:0] bounding_box_pixels;
+    logic [31:0] pixels_inside;
+    logic [31:0] depth_rejected;
+    logic [31:0] pixels_written;
+    logic [31:0] geometry_cycles;
+    logic [31:0] geometry_stall_cycles;
+    logic [31:0] raster_cycles;
+    logic [31:0] clear_cycles;
+    logic [31:0] total_cycles;
+    logic [31:0] swap_wait_cycles;
+} renderer_stats_t;
+
 typedef enum logic [3:0] {
-    GFX_CMD_SET_ROTATION = 4'd0,
     GFX_CMD_BEGIN_FRAME = 4'd1,
     GFX_CMD_DRAW_TRIANGLE = 4'd2,
     GFX_CMD_END_FRAME = 4'd3,
@@ -51,7 +76,9 @@ typedef enum logic [3:0] {
     GFX_CMD_DEFINE_MESH = 4'd5,
     GFX_CMD_UPLOAD_VERTEX = 4'd6,
     GFX_CMD_UPLOAD_INDEX = 4'd7,
-    GFX_CMD_DRAW_MESH = 4'd8
+    GFX_CMD_DRAW_MESH = 4'd8,
+    GFX_CMD_SET_VIEW_MATRIX = 4'd9,
+    GFX_CMD_SET_PROJECTION = 4'd10
 } graphics_command_opcode_t;
 
 typedef struct packed {
@@ -74,5 +101,7 @@ typedef struct packed {
 `define GFX_VERTEX_Z(command) command.payload[15:0]
 `define GFX_DRAW_MESH_HANDLE(command) command.payload[199:192]
 `define GFX_MODEL_MATRIX(command) command.payload[191:0]
+`define GFX_VIEW_MATRIX(command) command.payload[191:0]
+`define GFX_PROJECTION(command) command.payload[79:0]
 
 `endif

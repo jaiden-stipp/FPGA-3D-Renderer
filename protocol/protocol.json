@@ -1,0 +1,65 @@
+{
+  "transportVersion": 2,
+  "commandVersion": 2,
+  "statusVersion": 2,
+  "maximumDatagramBytes": 1400,
+  "transportHeaderBytes": 12,
+  "packetAcknowledgementBytes": 20,
+  "frameStatusBytes": 68,
+  "receiveFifoBytes": 2048,
+  "meshHandleCount": 16,
+  "verticesPerMesh": 128,
+  "trianglesPerMesh": 256,
+  "systemClockHz": 50000000,
+  "renderWidth": 320,
+  "renderHeight": 240,
+  "displayWidth": 640,
+  "displayHeight": 480,
+  "defaultUdpPort": 4000,
+  "magic": {
+    "command": [71, 70],
+    "transport": [71, 80],
+    "status": [71, 83]
+  },
+  "statusEvents": {
+    "packetAcknowledged": 1,
+    "frameDisplayed": 2
+  },
+  "statusFlags": {
+    "accepted": 1,
+    "duplicate": 2,
+    "busy": 4,
+    "sequenceError": 8,
+    "malformed": 16,
+    "overflow": 32,
+    "decoderError": 256,
+    "commandError": 512,
+    "receiveOverflow": 1024
+  },
+  "commandPayloadBytes": {
+    "beginFrame": 4,
+    "drawTriangle": 19,
+    "endFrame": 0,
+    "setPalette": 4,
+    "defineMesh": 5,
+    "uploadVertex": 8,
+    "uploadIndex": 7,
+    "drawMesh": 25,
+    "setViewMatrix": 24,
+    "setProjection": 10
+  },
+  "opcodes": {
+    "setPalette": 4,
+    "defineMesh": 5,
+    "uploadVertex": 6,
+    "uploadIndex": 7,
+    "drawMesh": 8,
+    "uploadVertices": 9,
+    "uploadIndices": 10,
+    "setViewMatrix": 11,
+    "setProjection": 12,
+    "beginFrame": 1,
+    "drawTriangle": 2,
+    "endFrame": 3
+  }
+}

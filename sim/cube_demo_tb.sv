@@ -17,7 +17,8 @@ module cube_demo_tb;
     logic swap_busy;
     logic swap_done;
     logic triangle_valid;
-    logic [7:0] rotation_angle;
+    model_matrix_3x4_t view_matrix;
+    projection_config_t projection;
     logic palette_write;
     logic [7:0] palette_address;
     logic [23:0] palette_write_rgb;
@@ -47,6 +48,7 @@ module cube_demo_tb;
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_start(),
         .triangle_ready(triangle_ready),
         .pipeline_idle(pipeline_idle),
         .clear_busy(clear_busy),
@@ -74,7 +76,8 @@ module cube_demo_tb;
         .mesh_draw_matrix(),
         .mesh_draw_done(1'b0),
         .mesh_draw_error(1'b0),
-        .rotation_angle(rotation_angle),
+        .view_matrix(view_matrix),
+        .projection(projection),
         .palette_write(palette_write),
         .palette_address(palette_address),
         .palette_write_rgb(palette_write_rgb),
@@ -126,7 +129,7 @@ module cube_demo_tb;
         swap_done = 1'b0;
         pipeline_idle = 1'b0;
 
-        wait (rotation_angle == 8'd1);
+        wait (demo.angle == 8'd1);
         wait (clear_request);
 
         if (accepted != 24)

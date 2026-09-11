@@ -60,15 +60,6 @@ module vga_controller_640x480 #(
 
     logic front_page_pixel;
     logic write_page_raster;
-    logic swap_toggle_raster;
-    logic swap_pending_raster;
-    logic swap_request_sync1;
-    logic swap_request_sync2;
-    logic swap_request_seen_pixel;
-    logic swap_ack_pixel;
-    logic swap_ack_sync1;
-    logic swap_ack_sync2;
-    logic swap_ack_seen_raster;
     logic fps_text_pixel;
 
     function automatic logic [4:0] glyph_row(
@@ -307,6 +298,21 @@ module vga_controller_640x480 #(
         .vsync(scan_vs)
     );
 
+    vga_page_swap_controller #(
+        .VERTICAL_ACTIVE(V_ACTIVE)
+    ) page_swap (
+        .reset(reset),
+        .raster_clk(raster_clk),
+        .pixel_clk(pixel_clk),
+        .swap_request(swap_request),
+        .scan_x(scan_x),
+        .scan_y(scan_y),
+        .front_page_pixel(front_page_pixel),
+        .write_page_raster(write_page_raster),
+        .swap_busy(swap_busy),
+        .swap_done(swap_done)
+    );
+
     always_comb begin
         if (scan_active) begin
             framebuffer_x = scan_x >> 1;
@@ -366,55 +372,6 @@ module vga_controller_640x480 #(
     );
 
     assign clear_busy = framebuffer_clear_busy0 || framebuffer_clear_busy1;
-    assign swap_busy = swap_pending_raster;
-
-    always_ff @(posedge raster_clk or posedge reset) begin
-        if (reset) begin
-            write_page_raster <= 1'b1;
-            swap_toggle_raster <= 1'b0;
-            swap_pending_raster <= 1'b0;
-            swap_ack_sync1 <= 1'b0;
-            swap_ack_sync2 <= 1'b0;
-            swap_ack_seen_raster <= 1'b0;
-            swap_done <= 1'b0;
-        end else begin
-            swap_ack_sync1 <= swap_ack_pixel;
-            swap_ack_sync2 <= swap_ack_sync1;
-            swap_done <= 1'b0;
-
-            if (swap_pending_raster &&
-                (swap_ack_sync2 != swap_ack_seen_raster)) begin
-                write_page_raster <= ~write_page_raster;
-                swap_ack_seen_raster <= swap_ack_sync2;
-                swap_pending_raster <= 1'b0;
-                swap_done <= 1'b1;
-            end else if (swap_request && !swap_pending_raster) begin
-                swap_toggle_raster <= ~swap_toggle_raster;
-                swap_pending_raster <= 1'b1;
-            end
-        end
-    end
-
-    always_ff @(posedge pixel_clk or posedge reset) begin
-        if (reset) begin
-            front_page_pixel <= 1'b0;
-            swap_request_sync1 <= 1'b0;
-            swap_request_sync2 <= 1'b0;
-            swap_request_seen_pixel <= 1'b0;
-            swap_ack_pixel <= 1'b0;
-        end else begin
-            swap_request_sync1 <= swap_toggle_raster;
-            swap_request_sync2 <= swap_request_sync1;
-
-            if ((scan_x == 10'd0) && (scan_y == V_ACTIVE) &&
-                (swap_request_sync2 != swap_request_seen_pixel)) begin
-                front_page_pixel <= ~front_page_pixel;
-                swap_request_seen_pixel <= swap_request_sync2;
-                swap_ack_pixel <= swap_request_sync2;
-            end
-        end
-    end
-
     palette_256x24 palette (
         .clock_a(palette_clk),
         .address_a(palette_address),

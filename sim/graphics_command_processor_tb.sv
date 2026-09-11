@@ -11,6 +11,7 @@ module graphics_command_processor_tb;
     logic command_error;
     logic frame_done;
     logic [31:0] frame_done_id;
+    logic frame_start;
     logic triangle_ready;
     logic pipeline_idle;
     logic clear_busy;
@@ -37,7 +38,8 @@ module graphics_command_processor_tb;
     model_matrix_3x4_t mesh_draw_matrix;
     logic mesh_draw_done;
     logic mesh_draw_error;
-    logic [7:0] rotation_angle;
+    model_matrix_3x4_t view_matrix;
+    projection_config_t projection;
     logic palette_write;
     logic [7:0] palette_address;
     logic [23:0] palette_write_rgb;
@@ -56,6 +58,7 @@ module graphics_command_processor_tb;
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_start(frame_start),
         .triangle_ready(triangle_ready),
         .pipeline_idle(pipeline_idle),
         .clear_busy(clear_busy),
@@ -83,7 +86,8 @@ module graphics_command_processor_tb;
         .mesh_draw_matrix(mesh_draw_matrix),
         .mesh_draw_done(mesh_draw_done),
         .mesh_draw_error(mesh_draw_error),
-        .rotation_angle(rotation_angle),
+        .view_matrix(view_matrix),
+        .projection(projection),
         .palette_write(palette_write),
         .palette_address(palette_address),
         .palette_write_rgb(palette_write_rgb),
@@ -125,10 +129,20 @@ module graphics_command_processor_tb;
         @(negedge clk);
         reset = 1'b0;
 
-        `GFX_ARGUMENT(command_data) = 24'h00005A;
-        send_command(GFX_CMD_SET_ROTATION);
-        if (rotation_angle != 8'h5A)
-            $fatal(1, "rotation command was not applied");
+        command_data.payload = '0;
+        command_data.payload[191:176] = 16'sh0100;
+        command_data.payload[111:96] = 16'sh0100;
+        command_data.payload[31:16] = 16'sh0100;
+        command_data.payload[15:0] = 16'sh0500;
+        send_command(GFX_CMD_SET_VIEW_MATRIX);
+        if (view_matrix.m00 != 16'sh0100 || view_matrix.m23 != 16'sh0500)
+            $fatal(1, "view command was not applied");
+
+        command_data.payload[79:0] = {16'sd256, 16'sd256, 16'sd160,
+                                     16'sd120, 16'sd512};
+        send_command(GFX_CMD_SET_PROJECTION);
+        if (projection.focal_x != 16'sd256 || projection.near_z != 16'sd512)
+            $fatal(1, "projection command was not applied");
 
         `GFX_ARGUMENT(command_data) = 32'h07A1B2C3;
         @(negedge clk);

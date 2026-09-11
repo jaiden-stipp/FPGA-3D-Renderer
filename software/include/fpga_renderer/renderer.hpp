@@ -1,6 +1,9 @@
 #pragma once
 
+#include "fpga_renderer/protocol_generated.hpp"
+
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -10,43 +13,47 @@
 
 namespace fpga_renderer {
 
-enum class Opcode : std::uint8_t {
-    SetRotation = 0,
-    BeginFrame = 1,
-    DrawTriangle = 2,
-    EndFrame = 3,
-    SetPalette = 4,
-    DefineMesh = 5,
-    UploadVertex = 6,
-    UploadIndex = 7,
-    DrawMesh = 8,
-    UploadVertices = 9,
-    UploadIndices = 10
+using Opcode = protocol::Opcode;
+
+using StatusEvent = protocol::StatusEvent;
+inline constexpr std::uint32_t StatusAccepted = protocol::statusAccepted;
+inline constexpr std::uint32_t StatusDuplicate = protocol::statusDuplicate;
+inline constexpr std::uint32_t StatusBusy = protocol::statusBusy;
+inline constexpr std::uint32_t StatusSequenceError = protocol::statusSequenceError;
+inline constexpr std::uint32_t StatusMalformed = protocol::statusMalformed;
+inline constexpr std::uint32_t StatusOverflow = protocol::statusOverflow;
+inline constexpr std::uint32_t StatusDecoderError = protocol::statusDecoderError;
+inline constexpr std::uint32_t StatusCommandError = protocol::statusCommandError;
+inline constexpr std::uint32_t StatusReceiveOverflow = protocol::statusReceiveOverflow;
+
+struct FrameStatistics {
+    std::uint32_t trianglesSubmitted = 0;
+    std::uint32_t trianglesClipped = 0;
+    std::uint32_t trianglesCulled = 0;
+    std::uint32_t boundingBoxPixels = 0;
+    std::uint32_t pixelsInside = 0;
+    std::uint32_t depthRejected = 0;
+    std::uint32_t pixelsWritten = 0;
+    std::uint32_t geometryCycles = 0;
+    std::uint32_t geometryStallCycles = 0;
+    std::uint32_t rasterCycles = 0;
+    std::uint32_t clearCycles = 0;
+    std::uint32_t totalCycles = 0;
+    std::uint32_t swapWaitCycles = 0;
 };
 
-enum class StatusEvent : std::uint8_t {
-    PacketAcknowledged = 1,
-    FrameDisplayed = 2
+struct PacketAcknowledgement {
+    std::uint32_t submissionId = 0;
+    std::uint16_t sequence = 0;
+    std::uint16_t fifoFree = 0;
+    std::uint32_t flags = 0;
 };
 
-enum StatusFlag : std::uint32_t {
-    StatusAccepted = 1U << 0,
-    StatusDuplicate = 1U << 1,
-    StatusBusy = 1U << 2,
-    StatusSequenceError = 1U << 3,
-    StatusMalformed = 1U << 4,
-    StatusOverflow = 1U << 5,
-    StatusDecoderError = 1U << 8,
-    StatusCommandError = 1U << 9,
-    StatusReceiveOverflow = 1U << 10
-};
-
-struct RendererStatus {
-    StatusEvent event;
-    std::uint32_t frameId;
-    std::uint16_t sequence;
-    std::uint16_t fifoFree;
-    std::uint32_t flags;
+struct FrameResult {
+    std::uint32_t frameId = 0;
+    std::uint16_t fifoFree = 0;
+    std::uint32_t flags = 0;
+    FrameStatistics statistics;
 };
 
 struct Vec3 {
@@ -59,6 +66,14 @@ struct Rgb {
     std::uint8_t red;
     std::uint8_t green;
     std::uint8_t blue;
+};
+
+struct Projection {
+    std::int16_t focalX = 256;
+    std::int16_t focalY = 256;
+    std::int16_t centerX = 160;
+    std::int16_t centerY = 120;
+    float nearPlane = 2.0F;
 };
 
 struct Triangle {
@@ -97,7 +112,8 @@ private:
 class CommandStream {
 public:
     void clear();
-    void setRotation(std::uint8_t angle);
+    void setViewMatrix(const Mat4& view);
+    void setProjection(const Projection& projection);
     void setPalette(std::uint8_t index, Rgb color);
     void uploadMesh(std::uint8_t handle, const Mesh& mesh);
     void beginFrame(std::uint32_t frameId);
@@ -118,19 +134,29 @@ private:
     std::uint32_t frame_id_ = 0;
 };
 
+struct TransportOptions {
+    std::string host;
+    std::uint16_t port = protocol::defaultUdpPort;
+    std::chrono::milliseconds packetTimeout{300};
+    std::chrono::milliseconds frameTimeout{30000};
+    unsigned packetAttempts = 8;
+};
+
 class RendererClient {
 public:
-    RendererClient(std::string host, std::uint16_t port = 4000);
+    explicit RendererClient(TransportOptions options);
+    RendererClient(std::string host,
+                   std::uint16_t port = protocol::defaultUdpPort);
     ~RendererClient();
     RendererClient(RendererClient&&) noexcept;
     RendererClient& operator=(RendererClient&&) noexcept;
     RendererClient(const RendererClient&) = delete;
     RendererClient& operator=(const RendererClient&) = delete;
 
-    RendererStatus submit(const CommandStream& commands);
-    RendererStatus uploadMesh(std::uint8_t handle, const Mesh& mesh);
-    RendererStatus drawMesh(std::uint32_t frameId, std::uint8_t handle,
-                            const Mat4& transform = Mat4::identity());
+    FrameResult submit(const CommandStream& commands);
+    PacketAcknowledgement uploadMesh(std::uint8_t handle, const Mesh& mesh);
+    FrameResult drawMesh(std::uint32_t frameId, std::uint8_t handle,
+                         const Mat4& transform = Mat4::identity());
 
 private:
     class Impl;
@@ -139,7 +165,6 @@ private:
 
 std::int16_t toQ8_8(float value);
 std::uint16_t crc16Ccitt(const std::uint8_t* data, std::size_t size);
-void sendUdp(const std::string& host, std::uint16_t port,
-             const CommandStream& commands);
+std::string formatFrameStatistics(const FrameStatistics& statistics);
 
 }

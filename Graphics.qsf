@@ -9,12 +9,16 @@ set_global_assignment -name PROJECT_CREATION_TIME_DATE "12:47:05  SEPTEMBER 02, 
 set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
 set_global_assignment -name SEARCH_PATH rtl/common
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_timing.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_page_swap_controller.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_controller.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/vga_pll.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/common/iterative_signed_divider.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/depth_test_stage.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/render_performance_counters.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/triangle_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/indexed_mesh_store.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/view_transform_stage.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/transform_3d_pipeline.sv
 set_global_assignment -name VERILOG_FILE rtl/memory/palette_ip.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pipeline/graphics_pipeline.sv
@@ -22,6 +26,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/command/graphics_command_stre
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/command/graphics_command_processor.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_renderer_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/system/graphics_stream_renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/async_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/async_byte_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_udp_receiver.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/network/mii_response_transmitter.sv
@@ -186,5 +191,7 @@ set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_BLANK_N
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_SYNC_N
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_HS
 set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_VS
+
+
 
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

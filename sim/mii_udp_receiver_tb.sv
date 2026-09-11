@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+`include "renderer_types.svh"
 
 module mii_udp_receiver_tb;
 
@@ -95,7 +96,7 @@ module mii_udp_receiver_tb;
             send_byte(8'hC0); send_byte(8'hA8); send_byte(8'h07); send_byte(8'h02);
             send_byte(8'h04); send_byte(8'hD2); send_byte(8'h0F); send_byte(8'hA0);
             send_byte(8'h00); send_byte(8'h16); send_byte(8'h00); send_byte(8'h00);
-            send_byte(8'h47); send_byte(8'h50); send_byte(8'h01); send_byte(8'h02);
+            send_byte(8'h47); send_byte(8'h50); send_byte(`GFX_TRANSPORT_VERSION); send_byte(8'h02);
             send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h2A);
             send_byte(8'h00); send_byte(8'h01); send_byte(8'h00); send_byte(8'h02);
             send_byte(8'hCA); send_byte(8'hFE);
@@ -136,7 +137,7 @@ module mii_udp_receiver_tb;
             send_byte(8'hC0); send_byte(8'hA8); send_byte(8'h07); send_byte(8'h02);
             send_byte(8'h04); send_byte(8'hD2); send_byte(8'h0F); send_byte(8'hA0);
             send_byte(8'h00); send_byte(8'h18); send_byte(8'h00); send_byte(8'h00);
-            send_byte(8'h47); send_byte(8'h50); send_byte(8'h01); send_byte(8'h03);
+            send_byte(8'h47); send_byte(8'h50); send_byte(`GFX_TRANSPORT_VERSION); send_byte(8'h03);
             send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h2A);
             send_byte(8'h00); send_byte(8'h00); send_byte(8'h00); send_byte(8'h04);
             send_byte(8'hDE); send_byte(8'hAD); send_byte(8'hBE); send_byte(8'hEF);

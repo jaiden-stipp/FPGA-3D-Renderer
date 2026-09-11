@@ -31,6 +31,7 @@ module de2_115_top (
     logic command_error;
     logic frame_done;
     logic [31:0] frame_done_id;
+    renderer_stats_t frame_statistics;
     logic key1_previous;
     logic demo_restart;
     logic switch_sync1;
@@ -113,6 +114,7 @@ module de2_115_top (
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_statistics(frame_statistics),
         .decoder_error(network_decoder_error),
         .receive_overflow(network_overflow),
         .packet_seen(network_packet_seen)
@@ -128,6 +130,7 @@ module de2_115_top (
         .command_error(command_error),
         .frame_done(frame_done),
         .frame_done_id(frame_done_id),
+        .frame_statistics(frame_statistics),
         .VGA_R(VGA_R),
         .VGA_G(VGA_G),
         .VGA_B(VGA_B),

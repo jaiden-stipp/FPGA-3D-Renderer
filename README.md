@@ -14,10 +14,11 @@ An FPGA-based 3D triangle renderer written in SystemVerilog. The hardware draws 
 - Per-draw fixed-point 3 x 4 model matrices
 - Reliable, sequenced UDP input through the DE2-115 ENET0 port
 - Frame IDs, packet acknowledgements, FIFO-space reports, and display completion status
+- Per-frame triangle, pixel, depth-test, pipeline-cycle, and VGA swap-wait counters
 - Hardware ARP replies and a 2048-byte clock-crossing receive FIFO
 - 64-entry ready/valid queue for 3D triangle commands
 - Signed Q8.8 vertex coordinates
-- Y-axis model rotation and a fixed camera pitch
+- Explicit Q8.8 view matrix and configurable perspective projection
 - Fixed-point perspective projection using `1/z`
 - Geometric near-plane and screen-edge clipping
 - Backface culling
@@ -38,11 +39,12 @@ Built-in demo ---------------------------------+
                                                |
                                           Command processor
                                                 |
-                                          Indexed mesh RAM and vertex fetch, or direct triangle
+                                          Indexed mesh RAM, vertex fetch, and model transform,
+                                          or direct triangle
                                                 |
                                           64-entry FIFO
                                                 |
-                                          3D rotation and camera transform
+                                          Explicit view transform
                                                 |
                                           Near-plane clipping
                                                 |
@@ -57,9 +59,9 @@ Built-in demo ---------------------------------+
                                           Palette lookup and double-buffered VGA output
 ```
 
-The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. It acknowledges each packet with the submission ID, sequence number, result, and free FIFO space. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. Bulk mesh records are buffered in one M9K and replayed into the same command path used by the original single-record opcodes. The command processor handles palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA sends the displayed frame ID back to the computer. `SW[0]` selects Ethernet commands or the built-in demo.
+The ENET0 receiver answers ARP for a fixed IPv4 address, filters UDP packets, orders each submission's packets, and moves command bytes from the 25 MHz MII clock domain into the 50 MHz renderer domain. Asynchronous queues carry complete ARP, acknowledgement, and frame-status records between clock domains. The stream decoder checks each command's format and CRC before producing ready/valid graphics commands. Bulk mesh records are buffered in one M9K and replayed into the same command path used by the original single-record opcodes. The command processor handles camera state, palette updates, mesh uploads, frame clearing, direct triangles, indexed draws, draining, and page swaps. When a swap completes, the FPGA returns the displayed frame ID, error flags, FIFO space, and hardware performance counters. `SW[0]` selects Ethernet commands or the built-in demo.
 
-Each draw command contains three 3D vertices and one 8-bit color index. The transform stage rotates the vertices, applies the camera view, and clips geometry before and after projection. Clipped polygons are split back into triangles before rasterization.
+Each direct draw command contains three 3D vertices and one 8-bit color index. A separate view stage applies an explicit Q8.8 3 x 4 camera matrix. The projection stage uses configurable focal lengths, screen center, and near distance before clipping the projected polygon to the viewport. Clipped polygons are split back into triangles before rasterization.
 
 Indexed meshes can be uploaded once and reused. Each indexed draw fetches three vertices from on-chip RAM, applies its own Q8.8 3 x 4 model matrix, and sends the resulting triangle through the same graphics pipeline. Three shared multipliers process the matrix one row at a time instead of keeping nine multipliers active in parallel. The current fixed allocation supports 16 handles, 128 vertices per handle, and 256 triangles per handle.
 
@@ -73,7 +75,7 @@ The rasterizer steps through each triangle's bounding box. Edge equations find c
 - Indexed vertex store: 98,304 bits
 - Indexed triangle store: 118,784 fitted bits
 
-The color pages, Z buffer, vertex store, and triangle store use Intel `altsyncram` M9K block RAM. Quartus reports 2,094,584 total memory bits, including the palette, network FIFO, bulk upload buffer, and other inferred storage.
+The color pages, Z buffer, vertex store, triangle store, and asynchronous network queues use Intel `altsyncram` M9K block RAM. The latest total, including the palette and bulk upload buffer, is generated in the Hardware section below.
 
 ## Debugging Process
 <img width="4032" height="3024" alt="image" src="https://github.com/user-attachments/assets/6147bdff-53cc-4008-98f4-3e645eb5851b" />
@@ -89,7 +91,7 @@ Clipping was one of the hardest geometry problems. Rejecting every triangle that
 
 The Z-buffer also required more than adding another RAM. Intel block RAM has registered read latency, so a pixel cannot be compared and written in one simple combinational step. The rasterizer now waits for the stored depth, compares it with the interpolated `1/z` value, and updates the depth and color memories only when the new pixel is closer. The clear, render, and display operations are sequenced so they do not compete for the same memory ports.
 
-Inferring memories correctly was another hardware-specific challenge. The first vertex-fetch implementation used an asynchronous array read, which caused Quartus to expand the vertex store into about 179,000 logic cells instead of block RAM. The fetch stage was redesigned around synchronous read addresses, registered outputs, and explicit wait states. The bulk command decoder uses the same pattern, reading one buffered byte at a time instead of creating hundreds of parallel reads. Quartus maps these stores into M9K RAM, and the complete design fits in 11,276 logic elements while meeting 50 MHz timing.
+Inferring memories correctly was another hardware-specific challenge. The first vertex-fetch implementation used an asynchronous array read, which caused Quartus to expand the vertex store into about 179,000 logic cells instead of block RAM. The fetch stage was redesigned around synchronous read addresses, registered outputs, and explicit wait states. The bulk command decoder uses the same pattern, reading one buffered byte at a time instead of creating hundreds of parallel reads. Quartus now maps these stores into M9K RAM while the complete design meets 50 MHz timing. Current resource use is generated from the latest build in the Hardware section.
 
 Reliable Ethernet transfer required handling more than raw UDP reception. Large command streams are divided into numbered packets, moved from the 25 MHz MII clock domain into the 50 MHz renderer domain, checked for missing or duplicate sequences, and acknowledged with FIFO space and error flags. Submission IDs track packet delivery, while separate frame IDs confirm that a completed frame was actually swapped onto the VGA display. The C++ client retries lost packets and does not begin the next frame until display completion arrives.
 
@@ -99,7 +101,16 @@ Imported OBJ files created a different resource problem. The Suzanne model I tes
 
 The project targets the Terasic DE2-115 board and its Intel Cyclone IV E `EP4CE115F29C7` FPGA. Rendering runs at 50 MHz. A Cyclone IV PLL generates a 25.173611 MHz VGA pixel clock for a refresh rate of about 59.94 Hz.
 
-The current build uses 11,336 logic elements, 5,487 registers, 2,094,584 memory bits, 264 M9K blocks, 60 embedded 9-bit multiplier elements, and one PLL. Its worst slow-corner setup slack is 1.709 ns, and every clock domain meets its setup and hold constraints.
+The following values are generated from the latest Quartus fitter and timing summaries by `scripts/update_build_stats.ps1`.
+
+<!-- BUILD_STATS:START -->
+- Logic elements: 14,791 / 114,480 ( 13 % )
+- Registers: 8538
+- Memory bits: 2,097,404 / 3,981,312 ( 53 % )
+- Embedded 9-bit multipliers: 66 / 532 ( 12 % )
+- PLLs: 1 / 4 ( 25 % )
+- Worst 85 C CLOCK_50 setup slack: 1.348 ns
+<!-- BUILD_STATS:END -->
 
 
 
@@ -140,7 +151,7 @@ The default `SW[0]` OFF position runs the built-in demo. To test commands from a
 
 ## Simulation
 
-The `sim` folder contains testbenches for the command stream decoder, command processor, triangle queue, transform and clipping stages, rasterizer, VGA PLL and timing, double buffering, and demo scene.
+Run `scripts/run_regression.ps1` to regenerate-check the shared protocol, compile and run every `sim/*_tb.sv` test, and run the C++ tests. Add `-Quartus` to compile the FPGA image and refresh the README build statistics.
 
 ## C++ Library
 
@@ -149,13 +160,14 @@ The library converts floating-point vertices to the renderer's signed Q8.8 forma
 ```cpp
 fpga_renderer::CommandStream commands;
 commands.setPalette(1, {255, 64, 32});
-commands.setRotation(0);
+commands.setViewMatrix(fpga_renderer::Mat4::translation(0.0F, 0.0F, 5.0F));
+commands.setProjection({256, 256, 160, 120, 2.0F});
 commands.beginFrame(1);
 commands.drawMesh(0, fpga_renderer::Mat4::scale(0.75F, 0.75F, 0.75F));
 commands.endFrame();
 fpga_renderer::RendererClient renderer("192.168.7.2");
 renderer.uploadMesh(0, mesh);
-const auto status = renderer.submit(commands);
+const auto frame = renderer.submit(commands);
 ```
 
 Build and test it with:
@@ -165,6 +177,8 @@ cmake -S . -B build
 cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
+
+The canonical protocol is `protocol/protocol.json`. Run `scripts/generate_protocol.ps1` after editing it, then rebuild the software and program the matching SOF. Protocol version 2 uses a 68-byte frame-completion packet.
 
 Run `renderer_example` to generate a complete cube command stream. Run `renderer_udp_demo` to split and send that scene to `192.168.7.2:4000`, retry packets when needed, and wait for the displayed-frame response. `renderer_scene_tests` adds palette, depth, clipping, multi-packet stress, and orbit-animation tests for the VGA display. See [the command protocol](docs/command_protocol.md) and [the Ethernet setup guide](docs/ethernet.md) for the full path.
 

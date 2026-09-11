@@ -31,7 +31,7 @@ module cube_demo (
     localparam int TRIANGLE_COUNT = 24;
 
     typedef enum logic [2:0] {
-        SET_ROTATION,
+        SET_VIEW,
         BEGIN_FRAME,
         FEED,
         END_FRAME,
@@ -43,15 +43,91 @@ module cube_demo (
     logic [7:0] angle;
     logic [31:0] frame_id;
     triangle_3d_t triangle_data;
+    model_matrix_3x4_t demo_view_matrix;
+    logic signed [15:0] yaw_sine;
+    logic signed [15:0] yaw_cosine;
+
+    function automatic logic signed [15:0] sine_quarter_q15(
+        input logic [3:0] index
+    );
+        begin
+            case (index)
+                4'd0: sine_quarter_q15 = 16'sd0;
+                4'd1: sine_quarter_q15 = 16'sd3212;
+                4'd2: sine_quarter_q15 = 16'sd6393;
+                4'd3: sine_quarter_q15 = 16'sd9512;
+                4'd4: sine_quarter_q15 = 16'sd12539;
+                4'd5: sine_quarter_q15 = 16'sd15446;
+                4'd6: sine_quarter_q15 = 16'sd18204;
+                4'd7: sine_quarter_q15 = 16'sd20787;
+                4'd8: sine_quarter_q15 = 16'sd23170;
+                4'd9: sine_quarter_q15 = 16'sd25329;
+                4'd10: sine_quarter_q15 = 16'sd27245;
+                4'd11: sine_quarter_q15 = 16'sd28898;
+                4'd12: sine_quarter_q15 = 16'sd30273;
+                4'd13: sine_quarter_q15 = 16'sd31356;
+                4'd14: sine_quarter_q15 = 16'sd32137;
+                default: sine_quarter_q15 = 16'sd32609;
+            endcase
+        end
+    endfunction
+
+    function automatic logic signed [15:0] sine_q15(
+        input logic [7:0] value
+    );
+        logic [3:0] index;
+        begin
+            case (value[7:6])
+                2'b00: index = value[5:2];
+                2'b01: index = 4'd15 - value[5:2];
+                2'b10: index = value[5:2];
+                default: index = 4'd15 - value[5:2];
+            endcase
+            sine_q15 = value[7] ? -sine_quarter_q15(index) :
+                                  sine_quarter_q15(index);
+        end
+    endfunction
+
+    function automatic logic signed [15:0] q15_to_q8_8(
+        input logic signed [15:0] value
+    );
+        q15_to_q8_8 = value >>> 7;
+    endfunction
+
+    function automatic logic signed [15:0] multiply_q8_8(
+        input logic signed [15:0] left,
+        input logic signed [15:0] right
+    );
+        logic signed [31:0] product;
+        begin
+            product = left * right;
+            multiply_q8_8 = product[23:8];
+        end
+    endfunction
+
+    always_comb begin
+        yaw_sine = q15_to_q8_8(sine_q15(angle));
+        yaw_cosine = q15_to_q8_8(sine_q15(angle + 8'd64));
+        demo_view_matrix = '0;
+        demo_view_matrix.m00 = yaw_cosine;
+        demo_view_matrix.m02 = yaw_sine;
+        demo_view_matrix.m10 = multiply_q8_8(-16'sd121, yaw_sine);
+        demo_view_matrix.m11 = 16'sd226;
+        demo_view_matrix.m12 = multiply_q8_8(16'sd121, yaw_cosine);
+        demo_view_matrix.m20 = -multiply_q8_8(16'sd226, yaw_sine);
+        demo_view_matrix.m21 = -16'sd121;
+        demo_view_matrix.m22 = multiply_q8_8(16'sd226, yaw_cosine);
+        demo_view_matrix.m23 = 16'sd1280;
+    end
 
     always_comb begin
         command_data = '0;
         command_valid = 1'b1;
 
         case (state)
-            SET_ROTATION: begin
-                command_data.opcode = GFX_CMD_SET_ROTATION;
-                command_data.payload[7:0] = angle;
+            SET_VIEW: begin
+                command_data.opcode = GFX_CMD_SET_VIEW_MATRIX;
+                `GFX_VIEW_MATRIX(command_data) = demo_view_matrix;
             end
             BEGIN_FRAME: begin
                 command_data.opcode = GFX_CMD_BEGIN_FRAME;
@@ -377,18 +453,18 @@ module cube_demo (
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
-            state <= SET_ROTATION;
+            state <= SET_VIEW;
             triangle_number <= 5'd0;
             angle <= 8'd0;
             frame_id <= 32'd0;
         end else if (restart) begin
-            state <= SET_ROTATION;
+            state <= SET_VIEW;
             triangle_number <= 5'd0;
             angle <= 8'd0;
             frame_id <= 32'd0;
         end else begin
             case (state)
-                SET_ROTATION: begin
+                SET_VIEW: begin
                     if (command_ready)
                         state <= BEGIN_FRAME;
                 end
@@ -418,11 +494,11 @@ module cube_demo (
                     if (frame_done) begin
                         angle <= angle + 8'd1;
                         frame_id <= frame_id + 1'b1;
-                        state <= SET_ROTATION;
+                        state <= SET_VIEW;
                     end
                 end
 
-                default: state <= SET_ROTATION;
+                default: state <= SET_VIEW;
             endcase
         end
     end

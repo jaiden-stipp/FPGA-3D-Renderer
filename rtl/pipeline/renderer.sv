@@ -21,7 +21,12 @@ module renderer #(
     output logic depth_write_enable,
     output logic [9:0] depth_write_x,
     output logic [8:0] depth_write_y,
-    output logic [7:0] depth_write_value
+    output logic [7:0] depth_write_value,
+    output logic busy,
+    output logic bounding_box_pixel,
+    output logic pixel_inside,
+    output logic depth_rejected,
+    output logic pixel_written
 );
 
     localparam int LAST_X = FRAME_WIDTH - 1;
@@ -94,12 +99,8 @@ module renderer #(
     logic [8:0] current_y;
     logic current_pixel_inside;
 
-    logic [9:0] pending_x;
-    logic [8:0] pending_y;
-    logic [7:0] pending_color;
-    logic [7:0] pending_depth;
-    logic pending_valid;
     logic [7:0] current_depth_byte;
+    logic depth_test_busy;
 
     function automatic [9:0] min3_x(
         input logic [9:0] a,
@@ -216,6 +217,32 @@ module renderer #(
         .quotient(depth_dy_quotient)
     );
 
+    depth_test_stage depth_test (
+        .clk(clk),
+        .reset(reset),
+        .candidate_valid((state == RASTERIZE) && current_pixel_inside),
+        .candidate_x(current_x),
+        .candidate_y(current_y),
+        .candidate_color(active_color),
+        .candidate_depth(current_depth_byte),
+        .depth_read_enable(depth_read_enable),
+        .depth_read_x(depth_read_x),
+        .depth_read_y(depth_read_y),
+        .depth_read_value(depth_read_value),
+        .depth_read_valid(depth_read_valid),
+        .raster_write(raster_write),
+        .raster_x(raster_x),
+        .raster_y(raster_y),
+        .raster_color(raster_color),
+        .depth_write_enable(depth_write_enable),
+        .depth_write_x(depth_write_x),
+        .depth_write_y(depth_write_y),
+        .depth_write_value(depth_write_value),
+        .depth_rejected(depth_rejected),
+        .pixel_written(pixel_written),
+        .busy(depth_test_busy)
+    );
+
     always_comb begin
         raw_min_x = min3_x(v0_x, v1_x, v2_x);
         raw_max_x = max3_x(v0_x, v1_x, v2_x);
@@ -261,18 +288,9 @@ module renderer #(
         end
 
         triangle_ready = (state == IDLE) && !reset;
-        depth_read_enable = (state == RASTERIZE) && current_pixel_inside;
-        depth_read_x = current_x;
-        depth_read_y = current_y;
-        raster_write = pending_valid && depth_read_valid &&
-                       (pending_depth > depth_read_value);
-        raster_x = pending_x;
-        raster_y = pending_y;
-        raster_color = pending_color;
-        depth_write_enable = raster_write;
-        depth_write_x = pending_x;
-        depth_write_y = pending_y;
-        depth_write_value = pending_depth;
+        busy = (state != IDLE) || depth_test_busy;
+        bounding_box_pixel = state == RASTERIZE;
+        pixel_inside = (state == RASTERIZE) && current_pixel_inside;
     end
 
     always_ff @(posedge clk or posedge reset) begin
@@ -312,20 +330,8 @@ module renderer #(
             current_depth <= '0;
             row_depth <= '0;
             depth_divide_start <= 1'b0;
-            pending_x <= '0;
-            pending_y <= '0;
-            pending_color <= '0;
-            pending_depth <= '0;
-            pending_valid <= 1'b0;
         end else begin
             depth_divide_start <= 1'b0;
-            pending_valid <= depth_read_enable;
-            if (depth_read_enable) begin
-                pending_x <= current_x;
-                pending_y <= current_y;
-                pending_color <= active_color;
-                pending_depth <= current_depth_byte;
-            end
 
             case (state)
                 IDLE: begin
@@ -425,7 +431,10 @@ module renderer #(
                     end
                 end
 
-                DRAIN: state <= IDLE;
+                DRAIN: begin
+                    if (!depth_test_busy)
+                        state <= IDLE;
+                end
 
                 default: state <= IDLE;
             endcase
